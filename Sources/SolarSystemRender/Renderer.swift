@@ -294,8 +294,13 @@ public final class SolarSystemRenderer {
             let a = orbit.azimuthDegrees * .pi / 180
             let e1 = simd_normalize(pole - drift * simd_dot(pole, drift))
             let e2 = simd_normalize(simd_cross(drift, e1))
-            let view = simd_normalize(cos(e) * drift + sin(e) * (cos(a) * e1 + sin(a) * e2))
-            return -view
+            // Split and annotated rather than written as one expression: every `*` and
+            // `+` here is overloaded for scalars as well as SIMD vectors, and nesting
+            // all four terms puts the type checker right on its time limit — it builds
+            // here but times out on a slower CI machine.
+            let radial: SIMD3<Double> = e1 * cos(a) + e2 * sin(a)
+            let view: SIMD3<Double> = drift * cos(e) + radial * sin(e)
+            return -simd_normalize(view)
         }
 
         // Tilt the in-plane perpendicular out of the ecliptic to incline the orbit.
