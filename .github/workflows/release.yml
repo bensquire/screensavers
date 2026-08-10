@@ -113,7 +113,6 @@ jobs:
         env:
           VERSION: ${{ steps.ver.outputs.numeric_version }}
           CODESIGN_IDENTITY: "Developer ID Application"
-          REQUIRE_THUMBNAIL: "1"
         run: make build
 
       - name: Verify bundle before notarizing
@@ -133,8 +132,10 @@ jobs:
             "$SAVER/Contents/Info.plist")
           test "$PLIST_VERSION" = "${{ steps.ver.outputs.numeric_version }}"
 
-      - name: Load the bundle and render a frame
-        run: swift Scripts/verify-saver.swift "build/Solar System.saver" build/check.png
+      # No output path: the scene snapshot traps on the runner's paravirtualised GPU.
+      # See the same step in ci.yml.
+      - name: Load the bundle
+        run: swift Scripts/verify-saver.swift "build/Solar System.saver"
 
       - name: Notarize and staple
         env:

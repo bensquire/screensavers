@@ -11,7 +11,6 @@
 #   VERSION            marketing version written into Info.plist
 #                      (default: whatever Scripts/Info.plist already says)
 #   CODESIGN_IDENTITY  signing identity (default "-", ad-hoc self-signing)
-#   REQUIRE_THUMBNAIL  set to 1 to fail rather than warn if thumbnails can't be rendered
 #   ARCHS / CONFIG     architecture list and swiftc optimisation level
 
 set -euo pipefail
@@ -101,23 +100,19 @@ if [ -n "$VERSION" ]; then
   /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$PLIST"
 fi
 
-# System Settings shows these in the screensaver grid. A saver without them can render
-# as an easy-to-miss blank tile. Generated from the real scene rather than shipped as
-# a static asset, so the thumbnail can never disagree with what the saver draws.
-echo "==> rendering thumbnails"
-APP="$ROOT/.build/release/SolarSystemApp"
-if [ ! -x "$APP" ]; then
-  (cd "$ROOT" && swift build -c release --product SolarSystemApp >/dev/null)
-fi
-if [ -x "$APP" ]; then
-  "$APP" --render "$BUNDLE/Contents/Resources/thumbnail.png"    --width 90  --height 58  --at 40 >/dev/null
-  "$APP" --render "$BUNDLE/Contents/Resources/thumbnail@2x.png" --width 180 --height 116 --at 40 >/dev/null
-elif [ "${REQUIRE_THUMBNAIL:-0}" = "1" ]; then
-  echo "error: could not build SolarSystemApp, so the bundle has no thumbnail" >&2
-  exit 1
-else
-  echo "warning: could not build SolarSystemApp; bundle will have no thumbnail" >&2
-fi
+# System Settings shows these in the screensaver grid; a saver without them renders as an
+# easy-to-miss blank tile. They are real frames of the real scene, but they are committed
+# rather than rendered here: SCNRenderer's offscreen snapshot traps on a paravirtualised
+# GPU, so a CI runner cannot produce them at all. `make thumbnails` regenerates them on a
+# machine with a GPU.
+echo "==> copying thumbnails"
+for thumb in thumbnail.png thumbnail@2x.png; do
+  if [ ! -f "$ROOT/Resources/$thumb" ]; then
+    echo "error: Resources/$thumb is missing — run 'make thumbnails'" >&2
+    exit 1
+  fi
+  cp "$ROOT/Resources/$thumb" "$BUNDLE/Contents/Resources/$thumb"
+done
 
 # Ad-hoc ("-") by default, which is enough for the saver to load locally. A real
 # Developer ID additionally gets the hardened runtime and a trusted timestamp, both of

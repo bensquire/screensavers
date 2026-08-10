@@ -46,16 +46,10 @@ jobs:
           lipo -archs "$SAVER/Contents/MacOS/SolarSystemSaver" | grep -q "x86_64"
           codesign --verify --strict --verbose=2 "$SAVER"
 
-      - name: Load the bundle and render a frame
-        run: swift Scripts/verify-saver.swift "build/Solar System.saver" build/check.png
-
-      - name: Upload rendered frame
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: render-check
-          path: |
-            build/check.png
-            build/Solar System.saver/Contents/Resources/thumbnail@2x.png
-          if-no-files-found: ignore
-          retention-days: 7
+      # No output path, so this stops short of snapshotting the scene: SCNRenderer's
+      # offscreen render traps on the runner's paravirtualised GPU. Everything before
+      # that — resolving the principal class, instantiating both views, building the
+      # scene graph, opening the options sheet — still runs. `make verify` locally does
+      # render, and is the check that the scene actually draws.
+      - name: Load the bundle
+        run: swift Scripts/verify-saver.swift "build/Solar System.saver"
