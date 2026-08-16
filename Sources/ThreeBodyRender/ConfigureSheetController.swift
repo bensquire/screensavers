@@ -71,11 +71,13 @@ public final class ConfigureSheetController: NSObject {
         content.spacing = 14
         content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
 
-        content.addArrangedSubview(
-            header(
-                "Three-Body Problem",
-                subtitle: "Newtonian gravity, integrated with a "
-                    + "time-symmetric adaptive symplectic method."))
+        let headerBox = header(
+            "Three-Body Problem",
+            subtitle: "Newtonian gravity, integrated with a "
+                + "time-symmetric adaptive symplectic method.")
+        content.addArrangedSubview(headerBox)
+        headerBox.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40)
+            .isActive = true
 
         // Scene mode
         let modeBox = NSStackView()
@@ -95,22 +97,27 @@ public final class ConfigureSheetController: NSObject {
         modeExplanation = NSTextField(wrappingLabelWithString: working.mode.explanation)
         modeExplanation.font = NSFont.systemFont(ofSize: 11)
         modeExplanation.textColor = .secondaryLabelColor
-        modeExplanation.preferredMaxLayoutWidth = 366
+        modeExplanation.preferredMaxLayoutWidth = 0
         modeBox.addArrangedSubview(modeExplanation)
         content.addArrangedSubview(modeBox)
+        modeBox.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40)
+            .isActive = true
 
-        content.addArrangedSubview(separator())
+        let topSeparator = separator()
+        content.addArrangedSubview(topSeparator)
 
         // Numeric controls, aligned in a grid.
         let grid = NSGridView()
         grid.rowSpacing = 10
         grid.columnSpacing = 12
+        grid.translatesAutoresizingMaskIntoConstraints = false
 
         accuracyPopUp = NSPopUpButton()
         accuracyPopUp.addItems(withTitles: Accuracy.allCases.map { $0.displayName })
         accuracyPopUp.selectItem(at: Accuracy.allCases.firstIndex(of: working.accuracy) ?? 1)
         accuracyPopUp.target = self
         accuracyPopUp.action = #selector(accuracyChanged(_:))
+        accuracyPopUp.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         grid.addRow(with: [fieldLabel("Integrator"), accuracyPopUp, NSGridCell.emptyContentView])
 
         for (index, spec) in Self.sliderSpecs.enumerated() {
@@ -122,7 +129,8 @@ public final class ConfigureSheetController: NSObject {
         }
 
         content.addArrangedSubview(grid)
-        content.addArrangedSubview(separator())
+        let bottomSeparator = separator()
+        content.addArrangedSubview(bottomSeparator)
 
         playbackCheck = NSButton(
             checkboxWithTitle: "Slow down through close encounters",
@@ -161,10 +169,17 @@ public final class ConfigureSheetController: NSObject {
         buttons.addArrangedSubview(ok)
         buttons.translatesAutoresizingMaskIntoConstraints = false
         content.addArrangedSubview(buttons)
-        buttons.widthAnchor.constraint(
-            equalTo: content.widthAnchor,
-            constant: -40
-        ).isActive = true
+
+        // Pin everything that should reach both margins to the content width.
+        // The slider column has no width of its own and absorbs whatever slack
+        // the sheet's actual width leaves, so the value column stays put
+        // against the right margin at any size.
+        for stretched in [buttons, grid, topSeparator, bottomSeparator] {
+            stretched.widthAnchor.constraint(
+                equalTo: content.widthAnchor,
+                constant: -40
+            ).isActive = true
+        }
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 460, height: 620),
@@ -194,7 +209,9 @@ public final class ConfigureSheetController: NSObject {
         let subtitleField = NSTextField(wrappingLabelWithString: subtitle)
         subtitleField.font = NSFont.systemFont(ofSize: 11)
         subtitleField.textColor = .secondaryLabelColor
-        subtitleField.preferredMaxLayoutWidth = 366
+        // Wrap to whatever width the sheet actually gets, like the mode
+        // explanation below it, rather than to a width guessed here.
+        subtitleField.preferredMaxLayoutWidth = 0
 
         stack.addArrangedSubview(titleField)
         stack.addArrangedSubview(subtitleField)
@@ -231,7 +248,9 @@ public final class ConfigureSheetController: NSObject {
             target: self,
             action: #selector(sliderChanged(_:)))
         slider.isContinuous = true
-        slider.widthAnchor.constraint(equalToConstant: 184).isActive = true
+        // Deliberately no width: this is the column that absorbs slack, so the
+        // fixed label and value columns keep their alignment at any sheet width.
+        slider.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
         return slider
     }
 
