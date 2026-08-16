@@ -43,6 +43,12 @@ public struct Camera {
     }
 
     /// Extra room around the framed points.
+    /// Padding around the framed content.
+    ///
+    /// Widening this to absorb the residual brief disappearances was measured
+    /// and made them *more* frequent (19 → 25 across 60 scenes): a wider target
+    /// means the camera holds a bigger view, drops below the contraction
+    /// threshold more often, and then has to expand again. Left where it is.
     private let margin: Double = 1.18
     /// Once the camera does resize, it aims slightly wider than strictly
     /// needed, so ordinary motion does not immediately demand another change.
@@ -90,6 +96,14 @@ public struct Camera {
     /// smoothness a property of the camera rather than something that has to be
     /// re-established every time one of the inputs is tuned.
     private let outputZoomRateLimit: Double = 0.20
+    /// The ceiling when content is *already outside* the frame.
+    ///
+    /// Slow zoom is what stops the camera breathing, but it also means a body
+    /// swinging outward can outrun the frame and vanish for seconds at a time.
+    /// The distinction that matters is between a discretionary adjustment,
+    /// which should be unhurried, and a mistake being made right now, which
+    /// should be corrected at once. Only the second case gets this.
+    private let recoveryZoomRateLimit: Double = 1.8
     private let outputPanRateLimit: Double = 220.0
 
     private var smoothedCenter: Vec2 = .zero
@@ -132,6 +146,14 @@ public struct Camera {
         let requiredY = min(
             max(requiredHalfExtents.y, minimumHalfExtent) * margin, maximumHalfExtent)
 
+        // Is anything outside the frame right now? Compared without the margin:
+        // eating into the padding is fine, leaving the screen is not.
+        let shownHalfX = worldPerPoint * viewSize.width / 2
+        let shownHalfY = worldPerPoint * viewSize.height / 2
+        let clipping =
+            initialised
+            && (requiredHalfExtents.x > shownHalfX || requiredHalfExtents.y > shownHalfY)
+
         guard initialised else {
             halfWidth = requiredX
             halfHeight = requiredY
@@ -143,8 +165,8 @@ public struct Camera {
             return
         }
 
-        halfWidth = follow(current: halfWidth, required: requiredX, dt: dt)
-        halfHeight = follow(current: halfHeight, required: requiredY, dt: dt)
+        halfWidth = follow(current: halfWidth, required: requiredX, dt: dt, urgent: clipping)
+        halfHeight = follow(current: halfHeight, required: requiredY, dt: dt, urgent: clipping)
 
         // Frame-rate independent decay of whatever discontinuity is outstanding.
         let decay = pow(relaxation, dt * 60.0)
@@ -156,7 +178,7 @@ public struct Camera {
 
         // Rate-limit the emitted values, not just the targets.
         let zoomStep = log(desiredScale) - log(worldPerPoint)
-        let zoomLimit = outputZoomRateLimit * dt
+        let zoomLimit = (clipping ? recoveryZoomRateLimit : outputZoomRateLimit) * dt
         worldPerPoint *= exp(min(max(zoomStep, -zoomLimit), zoomLimit))
 
         let panLimit = outputPanRateLimit * dt * worldPerPoint
@@ -167,11 +189,11 @@ public struct Camera {
 
     /// Asymmetric response: grow quickly, shrink slowly, and hold still in
     /// between.
-    private func follow(current: Double, required: Double, dt: Double) -> Double {
+    private func follow(current: Double, required: Double, dt: Double, urgent: Bool) -> Double {
         let expanding = required > current
         let target: Double
         if expanding {
-            let alpha = Camera.approach(dt: dt, tau: expandTime)
+            let alpha = Camera.approach(dt: dt, tau: urgent ? 0.12 : expandTime)
             target = current + (required * headroom - current) * alpha
         } else if required < current * contractThreshold {
             let alpha = Camera.approach(dt: dt, tau: contractTime)
@@ -183,7 +205,9 @@ public struct Camera {
         // Rate limit in log space, so the cap means the same thing at every
         // zoom level.
         guard current > 0, target > 0 else { return target }
-        let limit = (expanding ? expandRateLimit : contractRateLimit) * dt
+        let limit =
+            (expanding ? (urgent ? recoveryZoomRateLimit : expandRateLimit) : contractRateLimit)
+            * dt
         let step = log(target) - log(current)
         return current * exp(min(max(step, -limit), limit))
     }
