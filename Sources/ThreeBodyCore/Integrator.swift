@@ -142,13 +142,27 @@ public struct AdaptiveStepper {
     /// dynamical timescale. Smaller is more accurate and slower.
     public var eta: Double
     public var minStep: Double
+    /// Absolute ceiling on a step, for callers that want one.
+    ///
+    /// Defaults to no ceiling, because an absolute constant is the wrong shape
+    /// for this: the step should be governed by the system's own dynamical
+    /// timescale, and `candidateStep` already is. The previous default of 0.05
+    /// was chosen when scenes had separations of order 1; in astronomical units
+    /// they span 10–200 AU, so the timescales grew by orders of magnitude and
+    /// the cap bound 72% of the time — forcing steps far smaller than accuracy
+    /// required, for no benefit but the cost.
+    ///
+    /// Removing it is safe because the shortest pairwise timescale already
+    /// accounts for every pair: two bodies closing fast give a small `r/v_rel`
+    /// and pull the step down on their own. The requested interval bounds it
+    /// from above in any case.
     public var maxStep: Double
 
     public init(
         order: IntegratorOrder = .sixth,
         eta: Double = 0.02,
         minStep: Double = 1e-12,
-        maxStep: Double = 0.05
+        maxStep: Double = .infinity
     ) {
         self.integrator = SymplecticIntegrator(order: order)
         self.eta = eta
