@@ -1,0 +1,62 @@
+name: CI
+
+# Lint + tests + a smoke build on every push/PR. Tagged releases are handled by
+# release.yml — skip this on tags to avoid wasted CI minutes.
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: Lint, test, smoke build
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Lint
+        run: make lint
+
+      # Release-mode, because these are numerical: convergence slopes measured
+      # against reference integrations, and million-step conservation runs.
+      # Unoptimised they take tens of minutes.
+      - name: Test
+        run: make test
+
+      - name: Smoke build (ad-hoc signed)
+        run: make build
+
+      - name: Verify bundle layout, architectures, and signature
+        run: |
+          SAVER="build/Three-Body Problem.saver"
+          test -f "$SAVER/Contents/MacOS/ThreeBodySaver"
+          test -f "$SAVER/Contents/Info.plist"
+          # System Settings shows a blank tile without these, which is easy to miss.
+          test -f "$SAVER/Contents/Resources/thumbnail.png"
+          test -f "$SAVER/Contents/Resources/thumbnail@2x.png"
+          # Both slices must be present or Intel Macs silently fail to load it.
+          lipo -archs "$SAVER/Contents/MacOS/ThreeBodySaver" | tee /dev/stderr \
+            | grep -q "arm64"
+          lipo -archs "$SAVER/Contents/MacOS/ThreeBodySaver" | grep -q "x86_64"
+          codesign --verify --strict --verbose=2 "$SAVER"
+
+      # Unlike a SceneKit saver, this draws with Core Graphics and needs no GPU,
+      # so the runner can do the full check — load the bundle, animate both view
+      # instances, open the options sheet and render a frame.
+      - name: Load and draw the bundle
+        run: swift Scripts/verify-saver.swift "build/Three-Body Problem.saver" build/check.png
+
+      - name: Upload rendered frame
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-frame
+          path: build/check.png
+          retention-days: 7
