@@ -79,7 +79,7 @@ public final class SettingsStore {
 
 public extension SimulationSettings {
     /// Guards against out-of-range values from a stale or hand-edited plist.
-    public func clamped() -> SimulationSettings {
+    func clamped() -> SimulationSettings {
         let fallback = SimulationSettings.default
         var s = self
         s.speed = Limits.speed.clamp(s.speed, fallback: fallback.speed)

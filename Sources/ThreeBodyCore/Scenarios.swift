@@ -232,8 +232,14 @@ public enum Scenarios {
         let totalMass = m1 + m2
         let r = a * (1 + e)
         let speed = (gravitationalConstant * totalMass * (2.0 / r - 1.0 / a)).squareRoot()
-        let sep = Vec2(cos(phase), sin(phase)) * r
-        let vel = Vec2(-sin(phase), cos(phase)) * (speed * sense)
+        // Bound to named Doubles rather than written inline: the inline form
+        // type-checked under Xcode 26.6 and failed under 26.3 with "cannot
+        // convert Vec2 to Double", so the expression was relying on inference
+        // that is not stable across toolchains. It also halves the transcendentals.
+        let cosPhase: Double = cos(phase)
+        let sinPhase: Double = sin(phase)
+        let sep = Vec2(cosPhase, sinPhase) * r
+        let vel = Vec2(-sinPhase, cosPhase) * (speed * sense)
         // Split the relative vector about the centre of mass.
         return (
             r1: sep * (m2 / totalMass), v1: vel * (m2 / totalMass),

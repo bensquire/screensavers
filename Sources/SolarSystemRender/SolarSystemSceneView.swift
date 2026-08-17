@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Metal
 import SaverKit
 import SceneKit
 import SolarSystemCore
@@ -42,9 +43,47 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
     /// The most recent frame, for `make verify`.
     ///
     /// SceneKit draws on the GPU, so the view's backing store is empty and
-    /// `cacheDisplay` would capture nothing — `snapshot()` re-renders and gives
-    /// back what is actually on screen.
-    public func captureSaverFrame() -> NSImage? { snapshot() }
+    /// `cacheDisplay` would capture nothing.
+    ///
+    /// Deliberately an offscreen `SCNRenderer` rather than the view's own
+    /// `snapshot()`. `snapshot()` trips an assertion inside
+    /// `AppleParavirtTexture` on a virtualised GPU — which is what CI runs on —
+    /// and an assertion aborts the process rather than returning nil, so the
+    /// whole verify step died. Rendering into a texture we allocate ourselves is
+    /// the path the Metal savers already use there without trouble.
+    public func captureSaverFrame() -> NSImage? {
+        guard let device = MTLCreateSystemDefaultDevice(), bounds.width > 1, bounds.height > 1
+        else { return nil }
+
+        let width = Int(bounds.width), height = Int(bounds.height)
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .managed
+        guard let target = device.makeTexture(descriptor: descriptor),
+            let queue = device.makeCommandQueue(),
+            let commandBuffer = queue.makeCommandBuffer()
+        else { return nil }
+
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        pass.colorAttachments[0].storeAction = .store
+
+        let renderer = SCNRenderer(device: device, options: nil)
+        renderer.scene = scene
+        renderer.pointOfView = pointOfView
+        renderer.render(
+            atTime: 0,
+            viewport: CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height),
+            commandBuffer: commandBuffer,
+            passDescriptor: pass)
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+
+        return target.readBack(using: queue)?.asSaverFrame
+    }
 
     private let solarSystem: SolarSystemRenderer
     /// SceneKit hands out an absolute host timestamp; the scene wants time since the

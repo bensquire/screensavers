@@ -133,7 +133,7 @@ public struct SimulationSettings {
 
 public extension ClosedRange where Bound == Double {
     /// Clamp, treating a non-finite value as "fall back to `fallback`".
-    public func clamp(_ value: Double, fallback: Double) -> Double {
+    func clamp(_ value: Double, fallback: Double) -> Double {
         guard value.isFinite else { return fallback }
         return Swift.min(Swift.max(value, lowerBound), upperBound)
     }
