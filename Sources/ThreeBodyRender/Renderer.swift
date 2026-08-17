@@ -334,12 +334,14 @@ public final class Renderer {
             let t = Double(band) / Double(bandCount - 1)
             let fade = t * t
 
-            // Antialiasing is the single most expensive thing this renderer
-            // does — measured at roughly seven times the cost of the same
-            // strokes without it. The bright, thick head of the trail needs it;
-            // the older bands are thin and faint enough that the stair-stepping
-            // is not visible against black, so they go without.
-            ctx.setShouldAntialias(t > 0.55)
+            // Antialiasing stays on for every band. Switching it off for the
+            // faint ones saved about 1% of a core and looked broken: those
+            // bands are 0.5–1.5pt wide, so at any backing scale they are only a
+            // pixel or three across, and without coverage blending Core
+            // Graphics must take or leave whole pixels — a sub-pixel line
+            // drifting between pixel centres then renders as an intermittent
+            // dotted run rather than a line. Thin strokes need antialiasing to
+            // draw continuously at all; it is not a quality nicety for them.
             ctx.setLineWidth(CGFloat((0.5 + 1.9 * t) * uiScale))
             ctx.setStrokeColor(
                 red: CGFloat(color.r), green: CGFloat(color.g),
