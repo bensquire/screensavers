@@ -68,6 +68,7 @@ jobs:
           [[ "$VERSION" == *-* ]] && IS_PRERELEASE=true
           source "savers/$SAVER/saver.conf"
           {
+            echo "tag=$SAVER-v$VERSION"
             echo "saver=$SAVER"
             echo "version=$VERSION"
             echo "numeric=$NUMERIC"
@@ -240,7 +241,8 @@ jobs:
           NAME="${{ steps.what.outputs.bundle_name }}"
           # Previous release of *this* saver, so the changelog is not polluted by
           # the other one's commits.
-          PREV=$(git tag --sort=-creatordate | grep "^${SAVER}-v" | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          PREV=$(git tag --sort=-creatordate | grep "^${SAVER}-v" \
+            | grep -v "^${{ steps.what.outputs.tag }}$" | head -1 || true)
           {
             echo "## $NAME ${{ steps.what.outputs.version }}"
             echo
@@ -268,7 +270,10 @@ jobs:
         run: |
           PRERELEASE_FLAG=""
           [[ "${{ steps.what.outputs.prerelease }}" == "true" ]] && PRERELEASE_FLAG="--prerelease"
-          gh release create "${GITHUB_REF_NAME}" \
+          # The resolved tag, not GITHUB_REF_NAME: on a workflow_dispatch that is
+          # the branch, so the first successful release was published as "main"
+          # and created a tag of that name shadowing the branch.
+          gh release create "${{ steps.what.outputs.tag }}" \
             "dist/${{ steps.what.outputs.zip_prefix }}-${{ steps.what.outputs.version }}.zip" \
             --title "${{ steps.what.outputs.bundle_name }} ${{ steps.what.outputs.version }}" \
             --notes-file release_notes.md \
