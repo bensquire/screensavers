@@ -23,7 +23,16 @@ public struct StarField {
         var brightness: Double
         /// 0 = far and slow, 1 = near and quick.
         var depth: Double
+        /// 0 = blue-white, 1 = orange. Real starlight is not one colour, and a
+        /// sky of identical dots reads as a texture rather than as stars.
+        var warmth: Double
     }
+
+    /// Brightness levels the sky is quantised into for batching.
+    private static let brightnessBuckets = 5
+    /// Colour levels, likewise. Three is enough: past that the fills multiply
+    /// faster than the eye picks the difference out at one or two pixels across.
+    private static let warmthBuckets = 3
 
     /// Points per second for the nearest layer.
     ///
@@ -60,7 +69,8 @@ public struct StarField {
                 y: rng.double(0, Double(size.height)),
                 size: 0.7 + b * b * 1.9,
                 brightness: 0.10 + b * b * 0.75,
-                depth: 0.35 + b * b * 0.65)
+                depth: 0.35 + b * b * 0.65,
+                warmth: rng.double(0, 1))
         }
     }
 
@@ -87,9 +97,9 @@ public struct StarField {
         let quantum = 1.0 / max(pixelScale, 1.0)
         func snap(_ v: Double) -> Double { (v / quantum).rounded() * quantum }
 
-        // Bucket by brightness so the whole sky is five fill calls rather than
-        // a few thousand.
-        let buckets = 5
+        // Bucket by brightness and colour so the whole sky is fifteen fill calls
+        // rather than a few thousand.
+        let buckets = Self.brightnessBuckets * Self.warmthBuckets
         var rects = [[CGRect]](repeating: [], count: buckets)
         for star in stars {
             // Wrap rather than scroll off: a star leaving one edge reappears at
@@ -97,7 +107,13 @@ public struct StarField {
             let x = wrap(star.x + dx * star.depth, width)
             let y = wrap(star.y + dy * star.depth, height)
             let extent = max(snap(star.size), quantum)
-            let bucket = min(buckets - 1, max(0, Int(star.brightness * Double(buckets))))
+            let level = min(
+                Self.brightnessBuckets - 1,
+                max(0, Int(star.brightness * Double(Self.brightnessBuckets))))
+            let tint = min(
+                Self.warmthBuckets - 1,
+                max(0, Int(star.warmth * Double(Self.warmthBuckets))))
+            let bucket = level * Self.warmthBuckets + tint
             rects[bucket].append(
                 CGRect(
                     x: snap(x - extent / 2),
@@ -107,12 +123,18 @@ public struct StarField {
         }
 
         for bucket in 0..<buckets where !rects[bucket].isEmpty {
-            let value = (Double(bucket) + 0.5) / Double(buckets)
-            // Slightly blue-white, like real starlight.
+            let value =
+                (Double(bucket / Self.warmthBuckets) + 0.5) / Double(Self.brightnessBuckets)
+            let warmth =
+                (Double(bucket % Self.warmthBuckets) + 0.5) / Double(Self.warmthBuckets)
+            // The same ramp the Solar System star field uses, so the two skies
+            // are the same colour of blue-white through orange rather than each
+            // inventing one. Green is held flat; only the ends of the spectrum
+            // move, which is what makes it read as temperature.
             ctx.setFillColor(
-                red: CGFloat(value * 0.92),
-                green: CGFloat(value * 0.95),
-                blue: CGFloat(min(1.0, value * 1.05)),
+                red: CGFloat(min(1.0, value * (0.85 + 0.25 * warmth))),
+                green: CGFloat(min(1.0, value * 0.92)),
+                blue: CGFloat(min(1.0, value * (1.10 - 0.25 * warmth))),
                 alpha: CGFloat(alpha))
             ctx.fill(rects[bucket])
         }
