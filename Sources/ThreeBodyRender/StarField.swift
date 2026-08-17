@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SaverKit
 import ThreeBodyCore
 
 /// The backdrop of stars, drifting slowly.

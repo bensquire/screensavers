@@ -50,6 +50,23 @@ SDK="$(xcrun --sdk macosx --show-sdk-path)"
 rm -rf "$BUILD"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
+# Metal shaders, if the saver has any. A metallib is architecture-independent,
+# so unlike the Swift it is built once rather than per slice.
+if [ -n "${METAL_SOURCES:-}" ]; then
+  echo "==> $SAVER: compiling shaders"
+  air_files=()
+  for source in $METAL_SOURCES; do
+    air="$BUILD/$(basename "${source%.metal}").air"
+    xcrun -sdk macosx metal -c \
+      -mmacosx-version-min="$DEPLOYMENT_TARGET" \
+      "$ROOT/$source" -o "$air"
+    air_files+=("$air")
+  done
+  xcrun -sdk macosx metallib "${air_files[@]}" \
+    -o "$BUNDLE/Contents/Resources/$METAL_LIBRARY.metallib"
+  rm -f "${air_files[@]}"
+fi
+
 thin_binaries=()
 
 for arch in $ARCHS; do

@@ -1,4 +1,5 @@
 import AppKit
+import SaverKit
 import ThreeBodyCore
 
 /// The options sheet shown by System Settings, built in code so the bundle
@@ -65,26 +66,17 @@ public final class ConfigureSheetController: NSObject {
     // MARK: - Construction
 
     private func makeWindow() -> NSWindow {
-        let content = NSStackView()
-        content.orientation = .vertical
-        content.alignment = .leading
-        content.spacing = 14
-        content.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-
-        let headerBox = header(
-            "Three-Body Problem",
+        let sheet = OptionsSheet(
+            title: "Three-Body Problem",
             subtitle: "Newtonian gravity, integrated with a "
                 + "time-symmetric adaptive symplectic method.")
-        content.addArrangedSubview(headerBox)
-        headerBox.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40)
-            .isActive = true
 
         // Scene mode
         let modeBox = NSStackView()
         modeBox.orientation = .vertical
         modeBox.alignment = .leading
         modeBox.spacing = 6
-        modeBox.addArrangedSubview(sectionLabel("Scenes"))
+        modeBox.addArrangedSubview(OptionsSheet.sectionLabel("Scenes"))
         for mode in SceneMode.allCases {
             let button = NSButton(
                 radioButtonWithTitle: mode.displayName,
@@ -99,18 +91,12 @@ public final class ConfigureSheetController: NSObject {
         modeExplanation.textColor = .secondaryLabelColor
         modeExplanation.preferredMaxLayoutWidth = 0
         modeBox.addArrangedSubview(modeExplanation)
-        content.addArrangedSubview(modeBox)
-        modeBox.widthAnchor.constraint(equalTo: content.widthAnchor, constant: -40)
-            .isActive = true
+        sheet.add(modeBox, stretched: true)
 
-        let topSeparator = separator()
-        content.addArrangedSubview(topSeparator)
+        sheet.addSeparator()
 
         // Numeric controls, aligned in a grid.
-        let grid = NSGridView()
-        grid.rowSpacing = 10
-        grid.columnSpacing = 12
-        grid.translatesAutoresizingMaskIntoConstraints = false
+        let grid = OptionsSheet.grid()
 
         accuracyPopUp = NSPopUpButton()
         accuracyPopUp.addItems(withTitles: Accuracy.allCases.map { $0.displayName })
@@ -118,25 +104,28 @@ public final class ConfigureSheetController: NSObject {
         accuracyPopUp.target = self
         accuracyPopUp.action = #selector(accuracyChanged(_:))
         accuracyPopUp.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-        grid.addRow(with: [fieldLabel("Integrator"), accuracyPopUp, NSGridCell.emptyContentView])
+        grid.addRow(with: [
+            OptionsSheet.fieldLabel("Integrator"), accuracyPopUp, NSGridCell.emptyContentView,
+        ])
 
         for (index, spec) in Self.sliderSpecs.enumerated() {
-            let control = slider(spec: spec, value: working[keyPath: spec.keyPath])
+            let control = OptionsSheet.slider(
+                value: working[keyPath: spec.keyPath], range: spec.range,
+                target: self, action: #selector(sliderChanged(_:)))
             control.tag = index
-            let label = valueLabel()
+            let label = OptionsSheet.valueLabel()
             sliderControls.append((control, label))
-            grid.addRow(with: [fieldLabel(spec.title), control, label])
+            grid.addRow(with: [OptionsSheet.fieldLabel(spec.title), control, label])
         }
 
-        content.addArrangedSubview(grid)
-        let bottomSeparator = separator()
-        content.addArrangedSubview(bottomSeparator)
+        sheet.add(grid, stretched: true)
+        sheet.addSeparator()
 
         playbackCheck = NSButton(
             checkboxWithTitle: "Slow down through close encounters",
             target: self, action: #selector(toggleChanged(_:)))
         playbackCheck.state = working.adaptivePlayback ? .on : .off
-        content.addArrangedSubview(playbackCheck)
+        sheet.add(playbackCheck)
 
         hudCheck = NSButton(
             checkboxWithTitle: "Show readout (orbit name, energy drift)",
@@ -150,114 +139,15 @@ public final class ConfigureSheetController: NSObject {
             checkboxWithTitle: "Background stars",
             target: self, action: #selector(toggleChanged(_:)))
         starsCheck.state = working.showStars ? .on : .off
-        content.addArrangedSubview(hudCheck)
-        content.addArrangedSubview(glowCheck)
-        content.addArrangedSubview(starsCheck)
+        sheet.add(hudCheck)
+        sheet.add(glowCheck)
+        sheet.add(starsCheck)
 
-        // Buttons
-        let buttons = NSStackView()
-        buttons.orientation = .horizontal
-        buttons.spacing = 10
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel(_:)))
-        cancel.keyEquivalent = "\u{1b}"
-        let ok = NSButton(title: "OK", target: self, action: #selector(commit(_:)))
-        ok.keyEquivalent = "\r"
-        buttons.addArrangedSubview(spacer)
-        buttons.addArrangedSubview(cancel)
-        buttons.addArrangedSubview(ok)
-        buttons.translatesAutoresizingMaskIntoConstraints = false
-        content.addArrangedSubview(buttons)
-
-        // Pin everything that should reach both margins to the content width.
-        // The slider column has no width of its own and absorbs whatever slack
-        // the sheet's actual width leaves, so the value column stays put
-        // against the right margin at any size.
-        for stretched in [buttons, grid, topSeparator, bottomSeparator] {
-            stretched.widthAnchor.constraint(
-                equalTo: content.widthAnchor,
-                constant: -40
-            ).isActive = true
-        }
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 620),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false)
-        window.title = "Three-Body Problem"
-        window.contentView = content
-        content.layoutSubtreeIfNeeded()
-        window.setContentSize(content.fittingSize)
-
+        let window = sheet.makeWindow(
+            title: "Three-Body Problem", target: self,
+            cancel: #selector(cancel(_:)), commit: #selector(commit(_:)))
         refreshLabels()
         return window
-    }
-
-    // MARK: - Small builders
-
-    private func header(_ title: String, subtitle: String) -> NSView {
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 4
-
-        let titleField = NSTextField(labelWithString: title)
-        titleField.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
-
-        let subtitleField = NSTextField(wrappingLabelWithString: subtitle)
-        subtitleField.font = NSFont.systemFont(ofSize: 11)
-        subtitleField.textColor = .secondaryLabelColor
-        // Wrap to whatever width the sheet actually gets, like the mode
-        // explanation below it, rather than to a width guessed here.
-        subtitleField.preferredMaxLayoutWidth = 0
-
-        stack.addArrangedSubview(titleField)
-        stack.addArrangedSubview(subtitleField)
-        return stack
-    }
-
-    private func sectionLabel(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
-        field.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
-        return field
-    }
-
-    private func fieldLabel(_ text: String) -> NSTextField {
-        let field = NSTextField(labelWithString: text)
-        field.alignment = .right
-        field.widthAnchor.constraint(equalToConstant: 92).isActive = true
-        return field
-    }
-
-    private func valueLabel() -> NSTextField {
-        let field = NSTextField(labelWithString: "")
-        field.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        field.textColor = .secondaryLabelColor
-        field.alignment = .right
-        field.widthAnchor.constraint(equalToConstant: 66).isActive = true
-        return field
-    }
-
-    private func slider(spec: SliderSpec, value: Double) -> NSSlider {
-        let slider = NSSlider(
-            value: value,
-            minValue: spec.range.lowerBound,
-            maxValue: spec.range.upperBound,
-            target: self,
-            action: #selector(sliderChanged(_:)))
-        slider.isContinuous = true
-        // Deliberately no width: this is the column that absorbs slack, so the
-        // fixed label and value columns keep their alignment at any sheet width.
-        slider.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
-        return slider
-    }
-
-    private func separator() -> NSView {
-        let box = NSBox()
-        box.boxType = .separator
-        return box
     }
 
     // MARK: - Actions
@@ -311,10 +201,6 @@ public final class ConfigureSheetController: NSObject {
     }
 
     private func close() {
-        if let parent = window.sheetParent {
-            parent.endSheet(window)
-        } else {
-            window.orderOut(nil)
-        }
+        OptionsSheet.close(window)
     }
 }

@@ -78,6 +78,15 @@ jobs:
           make lint
           make test
 
+      - name: Metal toolchain
+        run: |
+          source "savers/${{ steps.what.outputs.saver }}/saver.conf"
+          if [ -n "${METAL_SOURCES:-}" ]; then
+            xcodebuild -downloadComponent MetalToolchain
+          else
+            echo "no shaders in this saver — skipping"
+          fi
+
       - name: Import Developer ID Application cert
         env:
           CERT_P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}

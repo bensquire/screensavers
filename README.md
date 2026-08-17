@@ -14,24 +14,26 @@
 |---|---|---|
 | **[Solar System](docs/solar-system.md)** | SceneKit | The solar system travelling through the galaxy, every planet in its real position for today's date. |
 | **[Three-Body Problem](docs/three-body.md)** | Core Graphics | The gravitational three-body problem integrated in real time, in solar masses, AU and years. |
+| **[Sliders Vortex](docs/vortex.md)** | Metal | An endless tunnel of drifting light, with the occasional discharge down the wall. |
 
 Each is downloaded and installed separately — see its page, or the
 [releases](https://github.com/bensquire/screensavers/releases).
 
 ## Why one repository
 
-Not for shared rendering: one draws with SceneKit and one with Core Graphics,
-and they have almost no drawing code in common. What they share is everything
-around it — compiling a loadable `MH_BUNDLE`, signing it with a Developer ID,
-notarising, stapling, packaging, and verifying that the result is something
-`ScreenSaverEngine` can actually load. That machinery is fiddly, easy to get
-subtly wrong, and was previously duplicated per project and already drifting.
+Not for shared rendering: they draw with SceneKit, Core Graphics and Metal
+respectively, and have almost no drawing code in common. What they share is
+everything around it — compiling a loadable `MH_BUNDLE`, signing it with a
+Developer ID, notarising, stapling, packaging, and verifying that the result is
+something `ScreenSaverEngine` can actually load. That machinery is fiddly, easy
+to get subtly wrong, and was previously duplicated per project and already
+drifting.
 
-Two WebView-based screensavers ([SlidersVortex](https://github.com/bensquire/SlidersVortex),
-[Gargantua](https://github.com/bensquire/gargantua)) are deliberately *not* here.
-They host HTML and JavaScript in a `WKWebView`, run on macOS 11, and have no
-Swift logic to test — so they would share the release job and nothing else,
-while forcing this package's platform floor up.
+A little more turned out to be genuinely common than expected, and now lives in
+`SaverKit`: preferences that survive being written from a sandboxed host, a
+seedable PRNG, and the options-sheet layout — which had already been got wrong
+once by building it from intrinsic widths, when System Settings presents the
+sheet wider than that.
 
 ## Working on them
 

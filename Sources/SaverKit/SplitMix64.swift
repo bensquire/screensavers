@@ -17,6 +17,16 @@ public struct SplitMix64: RandomNumberGenerator {
         return z ^ (z >> 31)
     }
 
+    /// Uniform in [0, 1), taken from the top 53 bits.
+    ///
+    /// Spelled out rather than deferring to `Double.random(in:using:)` because the
+    /// mapping from bits to value is then ours: the solar-system starfield is seeded
+    /// and its geometry is compared across builds, so this has to keep producing the
+    /// same numbers even if the standard library changes how it draws a Double.
+    public mutating func nextDouble() -> Double {
+        Double(next() >> 11) * (1.0 / 9_007_199_254_740_992.0)
+    }
+
     /// Uniform in [lower, upper).
     public mutating func double(_ lower: Double, _ upper: Double) -> Double {
         Double.random(in: lower..<upper, using: &self)

@@ -18,8 +18,12 @@ let package = Package(
         .library(name: "ThreeBodyCore", targets: ["ThreeBodyCore"]),
         .library(name: "ThreeBodyRender", targets: ["ThreeBodyRender"]),
         .library(name: "ThreeBodySaver", targets: ["ThreeBodySaver"]),
+        .library(name: "VortexCore", targets: ["VortexCore"]),
+        .library(name: "VortexRender", targets: ["VortexRender"]),
+        .library(name: "VortexSaver", targets: ["VortexSaver"]),
         .executable(name: "SolarSystemApp", targets: ["SolarSystemApp"]),
         .executable(name: "ThreeBodyApp", targets: ["ThreeBodyApp"]),
+        .executable(name: "VortexApp", targets: ["VortexApp"]),
         .executable(name: "ssverify", targets: ["ssverify"]),
     ],
     targets: [
@@ -30,10 +34,10 @@ let package = Package(
         // Vendored astronomy-engine (MIT, Don Cross). See LICENSES/.
         .target(name: "CAstronomy", publicHeadersPath: "include"),
         .target(
-            name: "SolarSystemCore", dependencies: ["CAstronomy"],
+            name: "SolarSystemCore", dependencies: ["CAstronomy", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
-            name: "SolarSystemRender", dependencies: ["SolarSystemCore"],
+            name: "SolarSystemRender", dependencies: ["SolarSystemCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "SolarSystemSaver",
@@ -46,7 +50,9 @@ let package = Package(
             name: "SolarSystemApp", dependencies: ["SolarSystemRender", "SolarSystemCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
-        .target(name: "ThreeBodyCore", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "ThreeBodyCore", dependencies: ["SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "ThreeBodyRender", dependencies: ["ThreeBodyCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
@@ -57,12 +63,32 @@ let package = Package(
             name: "ThreeBodyApp", dependencies: ["ThreeBodyRender", "ThreeBodyCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
+        .target(
+            name: "VortexCore", dependencies: ["SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "VortexRender", dependencies: ["VortexCore", "SaverKit"],
+            // The .metal source is compiled to a metallib by Scripts/build-saver.sh for
+            // the shipped bundle. SwiftPM only ever type-checks this target, so the file
+            // is excluded here rather than being treated as an unbuildable Swift source.
+            exclude: ["Vortex.metal"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "VortexSaver", dependencies: ["VortexRender", "VortexCore", "SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(
+            name: "VortexApp", dependencies: ["VortexRender", "VortexCore", "SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+
         .testTarget(
             name: "SolarSystemCoreTests",
             dependencies: ["SolarSystemCore", "SolarSystemRender"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "ThreeBodyCoreTests", dependencies: ["ThreeBodyCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(
+            name: "VortexTests", dependencies: ["VortexCore", "VortexRender"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

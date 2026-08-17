@@ -1,0 +1,165 @@
+import AppKit
+
+/// Builds the options window System Settings shows for a screensaver.
+///
+/// Sheets are assembled in code rather than from a nib, so every saver was
+/// otherwise going to repeat the same header, the same label columns, and the
+/// same OK/Cancel row. More to the point it was going to repeat the same
+/// mistake: System Settings presents the sheet *wider* than its `fittingSize`,
+/// so anything laid out from intrinsic widths ends up with its right-hand column
+/// stranded in the middle of the window. Everything added through `add(…,
+/// stretched: true)` is pinned to the content width instead, which is what keeps
+/// value labels against the right margin at whatever size the host chooses.
+public final class OptionsSheet {
+
+    /// Horizontal inset applied on both sides, so stretched rows are pinned to
+    /// the content width less this much on each side.
+    private static let margin: CGFloat = 20
+
+    public let content: NSStackView
+
+    public init(title: String, subtitle: String) {
+        content = NSStackView()
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 14
+        content.edgeInsets = NSEdgeInsets(
+            top: Self.margin, left: Self.margin, bottom: Self.margin, right: Self.margin)
+
+        let header = NSStackView()
+        header.orientation = .vertical
+        header.alignment = .leading
+        header.spacing = 4
+
+        let titleField = NSTextField(labelWithString: title)
+        titleField.font = NSFont.systemFont(ofSize: 15, weight: .semibold)
+        header.addArrangedSubview(titleField)
+
+        let subtitleField = NSTextField(wrappingLabelWithString: subtitle)
+        subtitleField.font = NSFont.systemFont(ofSize: 11)
+        subtitleField.textColor = .secondaryLabelColor
+        // Zero means "wrap to whatever width you are actually given" rather than
+        // to a width guessed here, which would be wrong at every other size.
+        subtitleField.preferredMaxLayoutWidth = 0
+        header.addArrangedSubview(subtitleField)
+
+        add(header, stretched: true)
+    }
+
+    /// Adds a row. `stretched` pins it to both margins — use it for anything with
+    /// a right-hand edge that should stay put: grids, separators, wrapping text.
+    public func add(_ view: NSView, stretched: Bool = false) {
+        content.addArrangedSubview(view)
+        if stretched {
+            view.widthAnchor.constraint(
+                equalTo: content.widthAnchor, constant: -Self.margin * 2
+            ).isActive = true
+        }
+    }
+
+    public func addSeparator() {
+        let box = NSBox()
+        box.boxType = .separator
+        add(box, stretched: true)
+    }
+
+    /// Wraps the sheet up with a right-aligned Cancel/OK row and returns the
+    /// window. Escape cancels and Return commits, as in any other sheet.
+    public func makeWindow(
+        title: String,
+        target: AnyObject,
+        cancel: Selector,
+        commit: Selector
+    ) -> NSWindow {
+        let buttons = NSStackView()
+        buttons.orientation = .horizontal
+        buttons.spacing = 10
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let cancelButton = NSButton(title: "Cancel", target: target, action: cancel)
+        cancelButton.keyEquivalent = "\u{1b}"
+        let okButton = NSButton(title: "OK", target: target, action: commit)
+        okButton.keyEquivalent = "\r"
+        buttons.addArrangedSubview(spacer)
+        buttons.addArrangedSubview(cancelButton)
+        buttons.addArrangedSubview(okButton)
+        buttons.translatesAutoresizingMaskIntoConstraints = false
+        add(buttons, stretched: true)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 620),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false)
+        window.title = title
+        window.contentView = content
+        content.layoutSubtreeIfNeeded()
+        window.setContentSize(content.fittingSize)
+        return window
+    }
+
+    /// Dismisses whether the window is a real sheet or a loose window, which
+    /// differs between System Settings and running the saver standalone.
+    public static func close(_ window: NSWindow) {
+        if let parent = window.sheetParent {
+            parent.endSheet(window)
+        } else {
+            window.orderOut(nil)
+        }
+    }
+
+    // MARK: - Pieces
+
+    public static func sectionLabel(_ text: String) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
+        return field
+    }
+
+    /// The left column of a grid row. Fixed width so every row lines up.
+    public static func fieldLabel(_ text: String, width: CGFloat = 92) -> NSTextField {
+        let field = NSTextField(labelWithString: text)
+        field.alignment = .right
+        field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return field
+    }
+
+    /// The right column of a grid row: the current value of the control beside
+    /// it. Monospaced digits so the text does not jitter as a slider moves.
+    public static func valueLabel(width: CGFloat = 66) -> NSTextField {
+        let field = NSTextField(labelWithString: "")
+        field.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        field.textColor = .secondaryLabelColor
+        field.alignment = .right
+        field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return field
+    }
+
+    /// The middle column. Deliberately given no width: this is the control that
+    /// absorbs whatever slack the sheet's real width leaves, which is what keeps
+    /// the fixed columns either side of it aligned.
+    public static func slider(
+        value: Double,
+        range: ClosedRange<Double>,
+        target: AnyObject,
+        action: Selector
+    ) -> NSSlider {
+        let slider = NSSlider(
+            value: value,
+            minValue: range.lowerBound,
+            maxValue: range.upperBound,
+            target: target,
+            action: action)
+        slider.isContinuous = true
+        slider.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
+        return slider
+    }
+
+    public static func grid() -> NSGridView {
+        let grid = NSGridView()
+        grid.rowSpacing = 10
+        grid.columnSpacing = 12
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        return grid
+    }
+}
