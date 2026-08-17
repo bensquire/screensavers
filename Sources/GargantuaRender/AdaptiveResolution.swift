@@ -23,8 +23,18 @@ public struct AdaptiveResolution {
     /// Set false to pin the scale where it is.
     public var isEnabled = true
 
+    /// Share of each frame the GPU is allowed to spend on the march.
+    ///
+    /// Not 1.0, deliberately. The controller settles wherever cost sits between
+    /// 0.62 and 1.15 of its budget, so a budget of one whole frame interval
+    /// means it settles at very nearly a whole frame interval — measured at 16.5
+    /// ms of a 16.7 ms frame on an M1 Pro, which is a screensaver holding the
+    /// GPU at full tilt indefinitely. Leaving a third of the frame idle costs
+    /// resolution and buys back the fans.
+    public static let utilisation = 0.65
+
     /// Seconds per frame the GPU is allowed.
-    public var budget: Double = 1.0 / GargantuaRenderer.framesPerSecond
+    public var budget: Double = Self.utilisation / GargantuaRenderer.framesPerSecond
 
     /// Smoothed GPU cost of a frame, in seconds.
     public private(set) var smoothedCost: Double = 0

@@ -58,7 +58,7 @@ public final class GargantuaConfigureSheet: NSObject {
         sheet.addSeparator()
 
         let adaptive = NSButton(
-            checkboxWithTitle: "Adapt render scale to hold 60fps",
+            checkboxWithTitle: "Adapt render scale to the frame rate",
             target: self, action: #selector(toggleChanged(_:)))
         adaptive.state = working.adaptiveResolution ? .on : .off
         sheet.add(adaptive)
@@ -66,8 +66,9 @@ public final class GargantuaConfigureSheet: NSObject {
         sheet.add(
             OptionsSheet.note(
                 "Every pixel integrates a light path through curved spacetime, so cost "
-                    + "scales with resolution. Left to adapt, the scale is driven to hold "
-                    + "the frame rate; fixed, the slider above decides it.\n\n"
+                    + "scales with resolution. Left to adapt, the scale is driven to fit "
+                    + "the frame into about two thirds of its time budget, leaving the rest "
+                    + "of the GPU alone; fixed, the slider above decides it.\n\n"
                     + "Doppler beaming is the bright-limb/dim-limb asymmetry a real "
                     + "orbiting disk shows. Interstellar dropped it because it broke the "
                     + "shot, so it is off by default — the gravitational redshift, which "

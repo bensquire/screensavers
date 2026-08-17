@@ -79,7 +79,7 @@ outside it cools down the Planck locus on its own.
 | **Doppler beaming** | The bright-limb asymmetry described above. |
 | **Stars** | The lensed starfield. The reference look has a black sky; the stars are this screensaver's addition, because a black sky takes away the clearest evidence that space is bent. |
 | **Render scale** | Fraction of the display the march runs at, when adapting is off. |
-| **Adapt render scale** | Drive the scale to hold 60fps instead. |
+| **Adapt render scale** | Drive the scale from measured GPU time instead. |
 
 ## How it is drawn
 
@@ -101,6 +101,13 @@ display and every moment. The controller reads the GPU's own reported elapsed
 time per frame — unlike the WebGL original, which had to cross-check two
 untrustworthy clocks because wall time is quantised by vsync and the timer-query
 extension bracketed CPU gaps too.
+
+It deliberately aims at about two thirds of the frame, not all of it, and the
+scene runs at 30fps rather than 60. Measured on an M1 Pro at 2560x1600, a frame
+at the settled render scale costs 16.4ms: that was 99% of a 60fps frame and is
+now 49% of a 30fps one, for the same rendered resolution. `GargantuaApp --bench`
+prints the whole cost curve and where the controller lands, so any change to
+that claim can be checked rather than argued about.
 
 **Accumulation is what makes one sample per pixel look clean.** Each frame
 jitters its rays by a Halton offset and blends into a reprojected history, with

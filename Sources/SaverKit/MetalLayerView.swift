@@ -75,11 +75,29 @@ open class MetalLayerView: NSView {
         min(window?.backingScaleFactor ?? 1, Self.maximumBackingScale)
     }
 
-    /// The drawable's size in device pixels, after the backing-scale cap.
+    /// Upper bound on drawable pixels, before any render-scale reduction.
+    ///
+    /// The backing-scale cap alone does not bound this: a 6K display at 2x is
+    /// four times the pixels of a laptop panel, and for a saver whose cost is
+    /// per-pixel that is the difference between comfortable and unusable.
+    /// Override to put a ceiling on it.
+    open var maximumDrawablePixels: Int { .max }
+
+    /// The drawable's size in device pixels, after the backing-scale and pixel
+    /// caps.
     public var drawableSize: CGSize {
-        CGSize(
-            width: max(1, (bounds.width * backingScale).rounded(.down)),
-            height: max(1, (bounds.height * backingScale).rounded(.down)))
+        var width = max(1, (bounds.width * backingScale).rounded(.down))
+        var height = max(1, (bounds.height * backingScale).rounded(.down))
+        let limit = Double(maximumDrawablePixels)
+        let pixels = Double(width) * Double(height)
+        if pixels > limit {
+            // Scale both axes by the same factor, so the aspect ratio — and
+            // therefore the framing — is untouched.
+            let shrink = (limit / pixels).squareRoot()
+            width = max(1, (width * shrink).rounded(.down))
+            height = max(1, (height * shrink).rounded(.down))
+        }
+        return CGSize(width: width, height: height)
     }
 
     private func updateDrawableSize() {

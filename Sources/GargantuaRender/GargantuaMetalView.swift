@@ -30,6 +30,13 @@ public final class GargantuaMetalView: MetalLayerView, SaverFrameCapturing {
         }
     }
 
+    /// 4K, matching what the WebGL original allowed itself.
+    ///
+    /// Beyond this the march stops being affordable at any render scale the
+    /// controller is willing to pick — at 2560x1600 a full-scale frame already
+    /// costs 50ms on an M1 Pro, and pixels scale that linearly.
+    public override var maximumDrawablePixels: Int { 3840 * 2160 }
+
     public override func drawableSizeChanged() {
         // Every target is about to be reallocated, so the frames accumulated in
         // them describe a different image.

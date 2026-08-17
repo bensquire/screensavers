@@ -21,9 +21,17 @@ import SaverKit
 /// is driven rather than chosen — see `AdaptiveResolution`.
 public final class GargantuaRenderer {
 
-    /// Frames per second. GPU-bound work, and the accumulation window is fixed
-    /// in seconds, so a higher rate genuinely converges the image faster.
-    public static let framesPerSecond: Double = 60
+    /// Frames per second.
+    ///
+    /// 30, not 60. Every pixel of every frame integrates a geodesic, so the cost
+    /// is very nearly proportional to frames drawn — and at 60 this was spending
+    /// a whole M1 Pro to animate a camera that takes seven minutes to go round
+    /// once. Halving the rate doubles the time available per frame, which the
+    /// adaptive controller spends on resolution: measured, the same machine ends
+    /// up rendering MORE pixels per frame than it did at 60, for a third less
+    /// GPU time overall. The accumulation window is fixed in seconds, so it is
+    /// unaffected by the change.
+    public static let framesPerSecond: Double = 30
 
     /// Levels in the bloom pyramid.
     static let bloomLevels = 5

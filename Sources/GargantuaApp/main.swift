@@ -180,6 +180,100 @@ func downsample(_ image: CGImage, to size: CGSize) -> CGImage? {
     return context.makeImage()
 }
 
+/// Measures what a frame actually costs on this GPU.
+///
+///   GargantuaApp --bench [--width 2560] [--height 1600] [--frames 90]
+///
+/// Reports the GPU's own elapsed time per frame — the number the adaptive
+/// controller runs on, and the only one that says whether a setting is
+/// affordable. Wall-clock time here would be quantised by nothing in
+/// particular, since these frames are submitted back to back.
+func runBenchmark() -> Bool {
+    let args = CommandLine.arguments
+    guard args.contains("--bench") else { return false }
+
+    func value(_ name: String, _ fallback: Int) -> Int {
+        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return fallback }
+        return Int(args[i + 1]) ?? fallback
+    }
+    let width = value("--width", 2560)
+    let height = value("--height", 1600)
+    let frames = value("--frames", 90)
+
+    guard let device = MTLCreateSystemDefaultDevice() else { return true }
+    print("device: \(device.name)   output: \(width)x\(height)   \(frames) frames each\n")
+
+    func measure(scale: Double, steps: Double) -> (median: Double, worst: Double) {
+        var settings = GargantuaSettings.default
+        settings.adaptiveResolution = false
+        let scene = GargantuaScene(settings: settings)
+        guard let renderer = try? GargantuaRenderer(device: device),
+            let target = device.makeReadableTarget(width: width, height: height)
+        else { return (0, 0) }
+        renderer.fixRenderScale(at: scale)
+
+        let step = 1.0 / GargantuaRenderer.framesPerSecond
+        var samples: [Double] = []
+        for i in 0..<frames {
+            scene.update(deltaTime: step)
+            guard let buffer = renderer.makeCommandBuffer() else { continue }
+            renderer.render(scene: scene, deltaTime: step, to: target, in: buffer)
+            buffer.commit()
+            buffer.waitUntilCompleted()
+            // The first few frames pay for pipeline warm-up and the first
+            // accumulation, which is not what a steady-state frame costs.
+            if i >= 10 { samples.append((buffer.gpuEndTime - buffer.gpuStartTime) * 1000) }
+        }
+        samples.sort()
+        guard !samples.isEmpty else { return (0, 0) }
+        return (samples[samples.count / 2], samples[Int(Double(samples.count) * 0.95)])
+    }
+
+    let budget = 1000.0 / GargantuaRenderer.framesPerSecond
+    print("render   march      GPU ms/frame        of frame")
+    print("scale    pixels     median   p95        budget")
+    for scale in [0.30, 0.40, 0.55, 0.70, 0.85, 1.00] {
+        let (median, worst) = measure(scale: scale, steps: SceneParameters().steps)
+        let marchPixels = Double(width * height) * scale * scale / 1_000_000
+        print(
+            String(
+                format: "%.2f     %5.2fM     %6.2f  %6.2f     %3.0f%%",
+                scale, marchPixels, median, worst, median / budget * 100))
+    }
+
+    // What the thing actually settles at, which is the only number that says
+    // how hard it leans on the machine.
+    var settings = GargantuaSettings.default
+    settings.adaptiveResolution = true
+    let scene = GargantuaScene(settings: settings)
+    guard let renderer = try? GargantuaRenderer(device: device),
+        let target = device.makeReadableTarget(width: width, height: height)
+    else { return true }
+
+    let step = 1.0 / GargantuaRenderer.framesPerSecond
+    var recent: [Double] = []
+    for _ in 0..<900 {
+        scene.update(deltaTime: step)
+        guard let buffer = renderer.makeCommandBuffer() else { continue }
+        renderer.render(scene: scene, deltaTime: step, to: target, in: buffer)
+        buffer.commit()
+        buffer.waitUntilCompleted()
+        let ms = (buffer.gpuEndTime - buffer.gpuStartTime) * 1000
+        renderer.noteFrameCost(gpuSeconds: ms / 1000)
+        recent.append(ms)
+        if recent.count > 120 { recent.removeFirst() }
+    }
+    recent.sort()
+    let settled = recent[recent.count / 2]
+    let interval = 1000.0 / GargantuaRenderer.framesPerSecond
+    print(
+        String(
+            format: "\nadaptive settles at: scale %.2f   %.1f ms/frame   %.0f%% of a %.0f ms frame",
+            renderer.renderScale, settled, settled / interval * 100, interval))
+    return true
+}
+
+if runBenchmark() { exit(0) }
 if renderThumbnail() { exit(0) }
 
 let app = NSApplication.shared
