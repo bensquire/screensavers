@@ -68,8 +68,14 @@ fails if a new saver is missing from its matrix.
 Each screensaver versions independently, so a tag names which one:
 
 ```sh
-git tag three-body-v1.0.0 && git push --tags
+git tag three-body-v1.0.0
+git push origin refs/tags/three-body-v1.0.0
 ```
+
+Push release tags **one at a time**, and push the ref explicitly rather than
+using `--tags`. GitHub drops the `push` event when several tags arrive in one
+go: four tags pushed together produced no release runs at all, silently, and
+re-pushing a single tag on its own started one immediately.
 
 That runs `.github/workflows/release.yml`, which signs with a Developer ID,
 notarises, staples the ticket, and publishes a GitHub Release containing just

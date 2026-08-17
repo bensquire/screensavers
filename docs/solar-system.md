@@ -142,7 +142,8 @@ architectures, and publishes the zip.
 Each screensaver versions independently, so the tag names which one:
 
 ```sh
-git tag solar-system-v1.0.0 && git push --tags
+git tag solar-system-v1.0.0
+git push origin refs/tags/solar-system-v1.0.0
 ```
 
 Signing needs five repository secrets — a Developer ID Application cert

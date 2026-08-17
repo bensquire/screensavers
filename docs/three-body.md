@@ -63,7 +63,8 @@ make bench   SAVER=three-body   # time the renderer, fixed seed, release build
 To watch it in a window while iterating: `swift run -c release ThreeBodyApp`.
 
 Releases are cut by pushing a tag that names the saver:
-`git tag three-body-v1.0.0 && git push --tags`. That
+`git tag three-body-v1.0.0
+git push origin refs/tags/three-body-v1.0.0`. That
 runs `.github/workflows/release.yml`, which signs with a Developer ID,
 notarizes, staples the ticket, and publishes a GitHub Release. It needs five
 repository secrets — `SIGNING_CERTIFICATE_P12_BASE64`,
