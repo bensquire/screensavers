@@ -1,0 +1,55 @@
+name: CI
+
+# Lint + tests + a smoke build on every push/PR. Tagged releases are handled by
+# release.yml — skip this on tags to avoid wasted CI minutes.
+
+on:
+  push:
+    branches: [main]
+    tags-ignore: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: Lint, test, smoke build
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Smoke build (ad-hoc signed)
+        run: make build
+
+      - name: Verify bundle layout, architectures, and signature
+        run: |
+          SAVER="build/Solar System.saver"
+          test -f "$SAVER/Contents/MacOS/SolarSystemSaver"
+          test -f "$SAVER/Contents/Info.plist"
+          test -f "$SAVER/Contents/Resources/astronomy-engine-MIT.txt"
+          # System Settings shows a blank tile without these, which is easy to miss.
+          test -f "$SAVER/Contents/Resources/thumbnail.png"
+          test -f "$SAVER/Contents/Resources/thumbnail@2x.png"
+          # Both slices must be present or Intel Macs silently fail to load it.
+          lipo -archs "$SAVER/Contents/MacOS/SolarSystemSaver" | tee /dev/stderr \
+            | grep -q "arm64"
+          lipo -archs "$SAVER/Contents/MacOS/SolarSystemSaver" | grep -q "x86_64"
+          codesign --verify --strict --verbose=2 "$SAVER"
+
+      # No output path, so this stops short of snapshotting the scene: SCNRenderer's
+      # offscreen render traps on the runner's paravirtualised GPU. Everything before
+      # that — resolving the principal class, instantiating both views, building the
+      # scene graph, opening the options sheet — still runs. `make verify` locally does
+      # render, and is the check that the scene actually draws.
+      - name: Load the bundle
+        run: swift Scripts/verify-saver.swift "build/Solar System.saver"
