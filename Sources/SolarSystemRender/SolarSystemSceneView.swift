@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SaverKit
 import SceneKit
 import SolarSystemCore
 import SpriteKit
@@ -36,7 +37,14 @@ public enum RenderQuality: Sendable {
 /// own re-fit-on-resize. They had already drifted apart (only one applied a hysteresis to
 /// aspect changes, only one parked the display link when hidden), and host wiring is
 /// exactly the seam that the shared render target was supposed to remove.
-public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate {
+public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, SaverFrameCapturing {
+
+    /// The most recent frame, for `make verify`.
+    ///
+    /// SceneKit draws on the GPU, so the view's backing store is empty and
+    /// `cacheDisplay` would capture nothing — `snapshot()` re-renders and gives
+    /// back what is actually on screen.
+    public func captureSaverFrame() -> NSImage? { snapshot() }
 
     private let solarSystem: SolarSystemRenderer
     /// SceneKit hands out an absolute host timestamp; the scene wants time since the

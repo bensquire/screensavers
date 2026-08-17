@@ -12,13 +12,31 @@ public enum NoiseVolume {
     /// told, since it uses the texel count to pick a mip level.
     public static let size = 64
 
+    /// Cache, keyed by device. The content is a fixed seed, so every renderer
+    /// would otherwise spend ~11ms of the main thread rebuilding exactly the
+    /// same million voxels — once per launch, and again on every options commit.
+    private static let cache = NSMapTable<AnyObject, MTLTexture>.weakToStrongObjects()
+    private static let cacheLock = NSLock()
+
+    /// Returns the volume for this device, building it the first time.
+    public static func shared(device: MTLDevice, queue: MTLCommandQueue) -> MTLTexture? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let existing = cache.object(forKey: device) { return existing }
+        guard let built = make(device: device, queue: queue) else { return nil }
+        cache.setObject(built, forKey: device)
+        return built
+    }
+
     /// Builds the volume and uploads it with a full mip chain.
     ///
     /// White noise is smoothed by two separable [1,2,1] passes per axis,
     /// wrapping at the edges, so trilinear interpolation lands on something
     /// smooth rather than a lattice of creases. Each channel is then stretched
     /// back over the full range, because blurring collapses it toward the mean.
-    public static func make(device: MTLDevice, seed: UInt64 = 0x51E7_D0C5) -> MTLTexture? {
+    public static func make(
+        device: MTLDevice, queue: MTLCommandQueue, seed: UInt64 = 0x51E7_D0C5
+    ) -> MTLTexture? {
         let n = size
         let channels = 4
         let count = n * n * n * channels
@@ -105,8 +123,7 @@ public enum NoiseVolume {
                 bytesPerImage: n * n * channels)
         }
 
-        guard let queue = device.makeCommandQueue(),
-            let commandBuffer = queue.makeCommandBuffer(),
+        guard let commandBuffer = queue.makeCommandBuffer(),
             let blit = commandBuffer.makeBlitCommandEncoder()
         else { return nil }
         blit.generateMipmaps(for: texture)

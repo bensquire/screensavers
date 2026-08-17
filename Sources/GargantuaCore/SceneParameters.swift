@@ -135,14 +135,23 @@ public struct SceneParameters: Equatable {
     /// Half-thickness at the outer edge. The camera's tilt floor is derived from
     /// this, so it has to be the same number the shader gets.
     public var diskHalfOuter: Double {
-        diskH * pow(diskOuterRadius / diskInnerRadius, 1.15)
+        halfOuter(inner: diskInnerRadius, outer: diskOuterRadius)
+    }
+
+    private func halfOuter(inner: Double, outer: Double) -> Double {
+        diskH * pow(outer / inner, 1.15)
     }
 
     /// h(r) linearised through its endpoints: one multiply-add in the shader's
     /// inner loop instead of a pow, and visually indistinguishable.
+    ///
+    /// The radii are resolved once here: reading them through the computed
+    /// properties would evaluate the ISCO — three cube roots and two square
+    /// roots — four times for one call.
     public var diskHalfCoefficients: (a: Double, b: Double, min: Double) {
         let inner = diskInnerRadius
-        let a = (diskHalfOuter - diskH) / (diskOuterRadius - inner)
+        let outer = max(diskOut, inner + 0.5)
+        let a = (halfOuter(inner: inner, outer: outer) - diskH) / (outer - inner)
         return (a, diskH - a * inner, diskH * 0.25)
     }
 

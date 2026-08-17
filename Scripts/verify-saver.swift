@@ -25,11 +25,9 @@ var args = Array(CommandLine.arguments.dropFirst())
 // context, and cacheDisplay returns an empty frame whether the scene is drawing
 // beautifully or not at all. Asserting on that would be worse than not
 // asserting, so each saver declares which it is.
-let checksRenderedPixels = !args.contains("--no-render-check")
-args.removeAll { $0 == "--no-render-check" }
 
 guard let path = args.first else {
-    fail("usage: verify-saver.swift <path to .saver> [out.png] [--no-render-check]")
+    fail("usage: verify-saver.swift <path to .saver> [out.png]")
 }
 guard let bundle = Bundle(path: path) else { fail("not a bundle: \(path)") }
 print("bundle:        \(path)")
@@ -91,16 +89,36 @@ for isPreview in [false, true] {
     }
     print("options:       sheet ok — \(interactive.count) controls")
 
-    guard checksRenderedPixels else {
-        print("render:        skipped — this saver renders on the GPU, where the "
-            + "host view's backing store stays empty")
-        continue
+    // A saver drawing through Metal or SceneKit renders on the GPU, so its
+    // backing store stays empty and cacheDisplay would capture nothing. Those
+    // views answer `captureSaverFrame` (SaverKit's SaverFrameCapturing) and hand
+    // back what they actually drew; found by selector because this script
+    // dlopens the bundle and cannot import the module.
+    let capture = NSSelectorFromString("captureSaverFrame")
+    func capturingView(in root: NSView) -> NSView? {
+        if root.responds(to: capture) { return root }
+        for child in root.subviews {
+            if let found = capturingView(in: child) { return found }
+        }
+        return nil
     }
 
-    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-        fail("could not create a bitmap rep")
+    let rep: NSBitmapImageRep
+    if let source = capturingView(in: view) {
+        guard let image = source.perform(capture)?.takeUnretainedValue() as? NSImage,
+            let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
+            fail("captureSaverFrame returned nothing — the saver drew no frame")
+        }
+        rep = NSBitmapImageRep(cgImage: cgImage)
+        print("render:        captured \(rep.pixelsWide)x\(rep.pixelsHigh) from the GPU")
+    } else {
+        guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            fail("could not create a bitmap rep")
+        }
+        view.cacheDisplay(in: view.bounds, to: cached)
+        rep = cached
     }
-    view.cacheDisplay(in: view.bounds, to: rep)
     var lit = 0
     for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
         for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {

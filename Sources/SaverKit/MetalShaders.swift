@@ -39,6 +39,14 @@ public enum MetalShaders {
         if let url = bundle.url(forResource: name, withExtension: "metallib") {
             return try device.makeLibrary(URL: url)
         }
+        // Inside a built `.saver` the library is not optional, and falling back
+        // to the source tree would hide its absence on the one machine that has
+        // that source — the developer's. A shipped bundle missing its shaders
+        // has to fail here, loudly, rather than quietly drawing black for
+        // everyone else.
+        guard bundle.bundleURL.pathExtension != "saver" else {
+            throw Failure.missingLibrary(name)
+        }
         guard let library = try? compile(named: name, sourceFile: sourceFile, device: device) else {
             throw Failure.missingLibrary(name)
         }
@@ -54,6 +62,22 @@ public enum MetalShaders {
             .appendingPathComponent("\(name).metal")
         return try device.makeLibrary(
             source: String(contentsOf: url, encoding: .utf8), options: nil)
+    }
+}
+
+extension MTLDevice {
+
+    /// A colour target the CPU can read back afterwards.
+    ///
+    /// Managed rather than shared: it is the one storage mode that reads back on
+    /// both Apple Silicon and Intel. Kept here beside `readBack` so that choice
+    /// is recorded once rather than in every renderer that needs a frame out.
+    public func makeReadableTarget(width: Int, height: Int) -> MTLTexture? {
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .managed
+        return makeTexture(descriptor: descriptor)
     }
 }
 

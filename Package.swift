@@ -11,6 +11,7 @@ let package = Package(
     name: "Screensavers",
     platforms: [.macOS(.v14)],
     products: [
+        .library(name: "SaverCore", targets: ["SaverCore"]),
         .library(name: "SaverKit", targets: ["SaverKit"]),
         .library(name: "SolarSystemCore", targets: ["SolarSystemCore"]),
         .library(name: "SolarSystemRender", targets: ["SolarSystemRender"]),
@@ -31,14 +32,22 @@ let package = Package(
         .executable(name: "ssverify", targets: ["ssverify"]),
     ],
     targets: [
+        // The Foundation-only half of the shared code. Split out from SaverKit so
+        // the physics modules can use it without linking AppKit, ScreenSaver and
+        // Metal — which is what makes "Core is testable headlessly" true rather
+        // than merely intended.
+        .target(name: "SaverCore", swiftSettings: [.swiftLanguageMode(.v5)]),
+
         // Shared by every saver: the small amount that is genuinely common to
         // hosting a ScreenSaverView, rather than to drawing any particular scene.
-        .target(name: "SaverKit", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "SaverKit", dependencies: ["SaverCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
 
         // Vendored astronomy-engine (MIT, Don Cross). See LICENSES/.
         .target(name: "CAstronomy", publicHeadersPath: "include"),
         .target(
-            name: "SolarSystemCore", dependencies: ["CAstronomy", "SaverKit"],
+            name: "SolarSystemCore", dependencies: ["CAstronomy"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "SolarSystemRender", dependencies: ["SolarSystemCore", "SaverKit"],
@@ -55,7 +64,7 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
         .target(
-            name: "ThreeBodyCore", dependencies: ["SaverKit"],
+            name: "ThreeBodyCore", dependencies: ["SaverCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "ThreeBodyRender", dependencies: ["ThreeBodyCore", "SaverKit"],
@@ -68,7 +77,7 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
         .target(
-            name: "VortexCore", dependencies: ["SaverKit"],
+            name: "VortexCore", dependencies: ["SaverCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "VortexRender", dependencies: ["VortexCore", "SaverKit"],
@@ -85,7 +94,7 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
         .target(
-            name: "GargantuaCore", dependencies: ["SaverKit"],
+            name: "GargantuaCore", dependencies: ["SaverCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .target(
             name: "GargantuaRender", dependencies: ["GargantuaCore", "SaverKit"],

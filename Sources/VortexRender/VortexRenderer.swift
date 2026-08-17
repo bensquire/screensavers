@@ -39,10 +39,10 @@ public final class VortexRenderer {
     private let postPipeline: MTLRenderPipelineState
     private let sceneSampler: MTLSamplerState
 
-    private let streakBuffer: MTLBuffer?
-    private let streakCount: Int
-    private let spriteBuffer: MTLBuffer?
-    private let spriteCount: Int
+    /// One optional per set, so "there is a buffer" and "there is something in
+    /// it" cannot disagree.
+    private let streaks: (buffer: MTLBuffer, count: Int)?
+    private let sprites: (buffer: MTLBuffer, count: Int)?
     /// Two triangles over four corners, shared by every streak instance.
     private let streakIndices: MTLBuffer
 
@@ -51,14 +51,12 @@ public final class VortexRenderer {
     public enum Failure: Error, CustomStringConvertible {
         case noDevice
         case noCommandQueue
-        case missingLibrary
         case missingFunction(String)
 
         public var description: String {
             switch self {
             case .noDevice: return "no Metal device"
             case .noCommandQueue: return "could not create a Metal command queue"
-            case .missingLibrary: return "Vortex.metallib is missing from the bundle"
             case .missingFunction(let name): return "shader '\(name)' is missing"
             }
         }
@@ -121,10 +119,8 @@ public final class VortexRenderer {
 
         // The particle field never changes, so both buffers are written once and
         // then only ever read by the GPU.
-        streakCount = particles.streaks.count
-        spriteCount = particles.sprites.count
-        streakBuffer = VortexRenderer.buffer(device: device, particles.streaks, label: "streaks")
-        spriteBuffer = VortexRenderer.buffer(device: device, particles.sprites, label: "sprites")
+        streaks = VortexRenderer.buffer(device: device, particles.streaks, label: "streaks")
+        sprites = VortexRenderer.buffer(device: device, particles.sprites, label: "sprites")
 
         // Corners are (along, side) = (0,-1) (0,+1) (1,-1) (1,+1); the two
         // triangles share the tail-right and head-left corners.
@@ -140,13 +136,14 @@ public final class VortexRenderer {
 
     private static func buffer(
         device: MTLDevice, _ particles: [Particle], label: String
-    ) -> MTLBuffer? {
+    ) -> (buffer: MTLBuffer, count: Int)? {
         guard !particles.isEmpty else { return nil }
         let buffer = particles.withUnsafeBytes {
             device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
         }
-        buffer?.label = label
-        return buffer
+        guard let buffer else { return nil }
+        buffer.label = label
+        return (buffer, particles.count)
     }
 
     private static func pipeline(
@@ -230,21 +227,21 @@ public final class VortexRenderer {
         encoder.setFragmentBytes(&uniforms, length: size, index: 0)
         encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
 
-        if let streakBuffer, streakCount > 0 {
+        if let streaks {
             encoder.setRenderPipelineState(streakPipeline)
-            encoder.setVertexBuffer(streakBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(streaks.buffer, offset: 0, index: 0)
             encoder.setVertexBytes(&uniforms, length: size, index: 1)
             encoder.drawIndexedPrimitives(
                 type: .triangle, indexCount: 6, indexType: .uint16,
                 indexBuffer: streakIndices, indexBufferOffset: 0,
-                instanceCount: streakCount)
+                instanceCount: streaks.count)
         }
 
-        if let spriteBuffer, spriteCount > 0 {
+        if let sprites {
             encoder.setRenderPipelineState(spritePipeline)
-            encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(sprites.buffer, offset: 0, index: 0)
             encoder.setVertexBytes(&uniforms, length: size, index: 1)
-            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: spriteCount)
+            encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: sprites.count)
         }
 
         if !scene.bolts.isEmpty {

@@ -128,16 +128,6 @@ func renderThumbnail() -> Bool {
         fail("could not create the renderer")
     }
 
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-        pixelFormat: .bgra8Unorm, width: renderWidth, height: renderHeight, mipmapped: false)
-    descriptor.usage = [.renderTarget, .shaderRead]
-    // Managed rather than shared: it is the one storage mode that reads back on
-    // both Apple Silicon and Intel.
-    descriptor.storageMode = .managed
-    guard let target = device.makeTexture(descriptor: descriptor) else {
-        fail("could not create the render target")
-    }
-
     // Run the scene forward so the tunnel has drifted somewhere interesting
     // rather than sitting at its symmetric starting pose.
     let step = 1.0 / VortexRenderer.framesPerSecond
@@ -146,9 +136,11 @@ func renderThumbnail() -> Bool {
         scene.update(deltaTime: step, layout: layout)
         t += step
     }
-    renderer.renderSynchronously(scene: scene, to: target)
 
-    guard let full = renderer.readBack(texture: target) else { fail("could not read the frame") }
+    guard
+        let full = renderer.renderToImage(
+            scene: scene, width: renderWidth, height: renderHeight)
+    else { fail("could not render the frame") }
     guard let image = downsample(full, to: CGSize(width: width, height: height)) else {
         fail("could not scale the frame down")
     }

@@ -1,5 +1,5 @@
 import Foundation
-import SaverKit
+import SaverCore
 
 /// The whole simulation: what time it is for the particles, where the tunnel is
 /// pointing, and what lightning is currently alive.
@@ -163,9 +163,8 @@ public final class VortexScene {
 
     /// Where the tunnel appears to converge. Trails the bend rather than
     /// matching it, so the mouth of the tunnel stays partly in view.
-    public var vanishingPoint: SIMD2<Float> {
-        let bend = bendPixels
-        return SIMD2(
+    public func vanishingPoint(bendPixels bend: SIMD2<Float>) -> SIMD2<Float> {
+        SIMD2(
             Float(layout.centerX) + bend.x * 0.75,
             Float(layout.centerY) + bend.y * 0.75)
     }

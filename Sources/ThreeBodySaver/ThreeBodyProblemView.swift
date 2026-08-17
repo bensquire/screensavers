@@ -33,7 +33,7 @@ final class ThreeBodyProblemView: ScreenSaverView {
         super.init(frame: frame, isPreview: isPreview)
 
         renderer.uiScale = isPreview ? 0.5 : 1.0
-        animationTimeInterval = FrameClock.frameInterval
+        animationTimeInterval = FrameClock.softwareFrameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
     }

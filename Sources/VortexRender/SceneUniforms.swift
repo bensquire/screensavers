@@ -31,8 +31,10 @@ struct SceneUniforms {
         let shocks = scene.shockUniforms
         self.shocks = (shocks[0], shocks[1], shocks[2], shocks[3])
         self.resolution = SIMD2(Float(layout.width), Float(layout.height))
-        self.bendPixels = scene.bendPixels
-        self.vanishingPoint = scene.vanishingPoint
+        // Resolved once — the vanishing point is derived from it.
+        let bend = scene.bendPixels
+        self.bendPixels = bend
+        self.vanishingPoint = scene.vanishingPoint(bendPixels: bend)
         self.focal = Float(layout.focal)
         self.time = Float(scene.elapsedMs)
         self.particleTime = Float(scene.particleClockMs)

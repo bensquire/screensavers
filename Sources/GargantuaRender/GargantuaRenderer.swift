@@ -28,6 +28,12 @@ public final class GargantuaRenderer {
     /// Levels in the bloom pyramid.
     static let bloomLevels = 5
 
+    /// Encoder labels, built once. Interpolating them per pass meant eight
+    /// String allocations and NSString bridges every frame for debug text.
+    private static let downsampleLabels = (0..<bloomLevels).map { "downsample \($0)" }
+    private static let upsampleLabels = (0..<bloomLevels).map { "upsample \($0)" }
+    private static let streakLabels = (0..<3).map { "streak \($0)" }
+
     /// HDR throughout: the disk's dynamic range is enormous, the bloom threshold
     /// sits above 1, and tone mapping does not happen until the composite.
     static let hdrFormat = MTLPixelFormat.rgba16Float
@@ -56,7 +62,6 @@ public final class GargantuaRenderer {
     public enum Failure: Error, CustomStringConvertible {
         case noDevice
         case noCommandQueue
-        case missingLibrary
         case missingFunction(String)
         case noNoiseVolume
 
@@ -64,7 +69,6 @@ public final class GargantuaRenderer {
             switch self {
             case .noDevice: return "no Metal device"
             case .noCommandQueue: return "could not create a Metal command queue"
-            case .missingLibrary: return "Gargantua.metallib is missing from the bundle"
             case .missingFunction(let name): return "shader '\(name)' is missing"
             case .noNoiseVolume: return "could not build the noise volume"
             }
@@ -143,7 +147,9 @@ public final class GargantuaRenderer {
         }
         self.noiseSampler = noiseState
 
-        guard let volume = NoiseVolume.make(device: device) else { throw Failure.noNoiseVolume }
+        guard let volume = NoiseVolume.shared(device: device, queue: queue) else {
+            throw Failure.noNoiseVolume
+        }
         self.noise = volume
     }
 
@@ -169,6 +175,10 @@ public final class GargantuaRenderer {
         let bloom: [MTLTexture]
         let streakA: MTLTexture
         let streakB: MTLTexture
+
+        var renderResolution: SIMD2<Float> {
+            SIMD2(Float(renderWidth), Float(renderHeight))
+        }
     }
 
     private func makeTarget(_ width: Int, _ height: Int, label: String) -> MTLTexture {
@@ -246,39 +256,61 @@ public final class GargantuaRenderer {
         let rt = targets(
             outputWidth: target.width, outputHeight: target.height,
             renderScale: adaptive.renderScale)
-        let renderResolution = SIMD2<Float>(Float(rt.renderWidth), Float(rt.renderHeight))
 
-        // 1. Geodesic march, at render scale.
-        var march = MarchUniforms(
-            scene: scene, resolution: renderResolution, noiseTexels: NoiseVolume.size)
+        march(scene, into: rt, in: commandBuffer)
+        let resolved = accumulate(scene, deltaTime: deltaTime, into: rt, in: commandBuffer)
+        bloom(scene, from: resolved, into: rt, in: commandBuffer)
+        let streaks = streak(scene, in: rt, commandBuffer: commandBuffer)
+        composite(
+            scene, scene: resolved, streaks: streaks, rt: rt,
+            to: target, in: commandBuffer)
+    }
+
+    /// The geodesic integration, at render scale.
+    private func march(
+        _ scene: GargantuaScene, into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
+    ) {
+        var uniforms = MarchUniforms(
+            scene: scene, resolution: rt.renderResolution, noiseTexels: NoiseVolume.size)
         encode(pass: rt.scene, label: "march", in: commandBuffer) { encoder in
             encoder.setRenderPipelineState(self.marchPipeline)
-            encoder.setFragmentBytes(&march, length: MemoryLayout<MarchUniforms>.stride, index: 0)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<MarchUniforms>.stride, index: 0)
             encoder.setFragmentTexture(self.noise, index: 0)
             encoder.setFragmentSamplerState(self.noiseSampler, index: 0)
         }
+    }
 
-        // 2. Reproject and accumulate. Ping-pong, so the frame just written
-        //    becomes next frame's history.
-        let historySource = usingHistoryA ? rt.historyA : rt.historyB
-        let historyDestination = usingHistoryA ? rt.historyB : rt.historyA
-        var accumulate = AccumulateUniforms(
-            scene: scene, resolution: renderResolution,
+    /// Reprojects the previous frame and blends this one into it, returning the
+    /// resolved image. Ping-ponged, so what is written becomes next frame's
+    /// history.
+    private func accumulate(
+        _ scene: GargantuaScene, deltaTime: Double,
+        into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
+    ) -> MTLTexture {
+        let source = usingHistoryA ? rt.historyA : rt.historyB
+        let destination = usingHistoryA ? rt.historyB : rt.historyA
+        var uniforms = AccumulateUniforms(
+            scene: scene, resolution: rt.renderResolution,
             alpha: scene.accumulationAlpha(deltaTime: deltaTime),
             historyValid: historyValid)
-        encode(pass: historyDestination, label: "accumulate", in: commandBuffer) { encoder in
+        encode(pass: destination, label: "accumulate", in: commandBuffer) { encoder in
             encoder.setRenderPipelineState(self.accumulatePipeline)
             encoder.setFragmentBytes(
-                &accumulate, length: MemoryLayout<AccumulateUniforms>.stride, index: 0)
+                &uniforms, length: MemoryLayout<AccumulateUniforms>.stride, index: 0)
             encoder.setFragmentTexture(rt.scene, index: 0)
-            encoder.setFragmentTexture(historySource, index: 1)
+            encoder.setFragmentTexture(source, index: 1)
             encoder.setFragmentSamplerState(self.linearSampler, index: 0)
         }
         usingHistoryA.toggle()
         historyValid = true
-        let resolved = historyDestination
+        return destination
+    }
 
-        // 3. Bloom: threshold, downsample chain, additive walk back up.
+    /// Threshold, downsample chain, then an additive walk back up the pyramid.
+    private func bloom(
+        _ scene: GargantuaScene, from resolved: MTLTexture,
+        into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
+    ) {
         let p = scene.parameters
         var bright = BrightUniforms(
             texel: texel(rt.bloom[0]),
@@ -292,64 +324,86 @@ public final class GargantuaRenderer {
         }
 
         for level in 1..<rt.bloom.count {
-            var blur = BlurUniforms(
-                sourceTexel: texel(rt.bloom[level - 1]),
-                destinationTexel: texel(rt.bloom[level]))
-            encode(pass: rt.bloom[level], label: "downsample \(level)", in: commandBuffer) {
-                encoder in
-                encoder.setRenderPipelineState(self.downsamplePipeline)
-                encoder.setFragmentBytes(&blur, length: MemoryLayout<BlurUniforms>.stride, index: 0)
-                encoder.setFragmentTexture(rt.bloom[level - 1], index: 0)
-                encoder.setFragmentSamplerState(self.linearSampler, index: 0)
-            }
+            blur(
+                from: rt.bloom[level - 1], to: rt.bloom[level],
+                pipeline: downsamplePipeline, label: Self.downsampleLabels[level],
+                in: commandBuffer)
         }
-
         for level in stride(from: rt.bloom.count - 2, through: 0, by: -1) {
-            var blur = BlurUniforms(
-                sourceTexel: texel(rt.bloom[level + 1]),
-                destinationTexel: texel(rt.bloom[level]))
             // Loads what is already there: this pass adds the coarser level on
             // top rather than replacing it.
-            encode(pass: rt.bloom[level], label: "upsample \(level)", load: .load, in: commandBuffer) {
-                encoder in
-                encoder.setRenderPipelineState(self.upsamplePipeline)
-                encoder.setFragmentBytes(&blur, length: MemoryLayout<BlurUniforms>.stride, index: 0)
-                encoder.setFragmentTexture(rt.bloom[level + 1], index: 0)
+            blur(
+                from: rt.bloom[level + 1], to: rt.bloom[level],
+                pipeline: upsamplePipeline, label: Self.upsampleLabels[level],
+                load: .load, in: commandBuffer)
+        }
+    }
+
+    /// One level of the pyramid in either direction — the two differ only by
+    /// which way they step and whether they replace or add.
+    private func blur(
+        from source: MTLTexture,
+        to destination: MTLTexture,
+        pipeline: MTLRenderPipelineState,
+        label: String,
+        load: MTLLoadAction = .dontCare,
+        in commandBuffer: MTLCommandBuffer
+    ) {
+        var uniforms = BlurUniforms(
+            sourceTexel: texel(source), destinationTexel: texel(destination))
+        encode(pass: destination, label: label, load: load, in: commandBuffer) { encoder in
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<BlurUniforms>.stride, index: 0)
+            encoder.setFragmentTexture(source, index: 0)
+            encoder.setFragmentSamplerState(self.linearSampler, index: 0)
+        }
+    }
+
+    /// Three widening horizontal blurs. Skipped outright when the look does not
+    /// use streaks — the shipped one does not — in which case the composite is
+    /// handed a bloom level it then multiplies by zero.
+    private func streak(
+        _ scene: GargantuaScene, in rt: RenderTargets, commandBuffer: MTLCommandBuffer
+    ) -> MTLTexture {
+        var source = rt.bloom[min(1, rt.bloom.count - 1)]
+        guard scene.parameters.streak > 0 else { return source }
+
+        var destination = rt.streakA
+        var spare = rt.streakB
+        for (pass, stride) in [Float(1.0), 4.0, 14.0].enumerated() {
+            var uniforms = StreakUniforms(texel: texel(destination), stride: stride)
+            let input = source
+            let output = destination
+            encode(pass: output, label: Self.streakLabels[pass], in: commandBuffer) { encoder in
+                encoder.setRenderPipelineState(self.streakPipeline)
+                encoder.setFragmentBytes(
+                    &uniforms, length: MemoryLayout<StreakUniforms>.stride, index: 0)
+                encoder.setFragmentTexture(input, index: 0)
                 encoder.setFragmentSamplerState(self.linearSampler, index: 0)
             }
+            source = output
+            swap(&destination, &spare)
         }
+        return source
+    }
 
-        // 4. Anamorphic streaks. Three widening horizontal blurs, and skipped
-        //    outright when the look does not use them — the shipped one does not.
-        var streakSource = rt.bloom[min(1, rt.bloom.count - 1)]
-        if p.streak > 0 {
-            var destination = rt.streakA
-            var spare = rt.streakB
-            for (pass, stride) in [Float(1.0), 4.0, 14.0].enumerated() {
-                var uniforms = StreakUniforms(texel: texel(destination), stride: stride)
-                let source = streakSource
-                let output = destination
-                encode(pass: output, label: "streak \(pass)", in: commandBuffer) { encoder in
-                    encoder.setRenderPipelineState(self.streakPipeline)
-                    encoder.setFragmentBytes(
-                        &uniforms, length: MemoryLayout<StreakUniforms>.stride, index: 0)
-                    encoder.setFragmentTexture(source, index: 0)
-                    encoder.setFragmentSamplerState(self.linearSampler, index: 0)
-                }
-                streakSource = output
-                swap(&destination, &spare)
-            }
-        }
-
-        // 5. Composite to the drawable.
-        var post = PostUniforms(
-            scene: scene, resolution: SIMD2(Float(target.width), Float(target.height)))
+    /// Tone map and grade to the drawable.
+    private func composite(
+        _ gargantua: GargantuaScene,
+        scene resolved: MTLTexture,
+        streaks: MTLTexture,
+        rt: RenderTargets,
+        to target: MTLTexture,
+        in commandBuffer: MTLCommandBuffer
+    ) {
+        var uniforms = PostUniforms(
+            scene: gargantua, resolution: SIMD2(Float(target.width), Float(target.height)))
         encode(pass: target, label: "post", in: commandBuffer) { encoder in
             encoder.setRenderPipelineState(self.postPipeline)
-            encoder.setFragmentBytes(&post, length: MemoryLayout<PostUniforms>.stride, index: 0)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<PostUniforms>.stride, index: 0)
             encoder.setFragmentTexture(resolved, index: 0)
             encoder.setFragmentTexture(rt.bloom[0], index: 1)
-            encoder.setFragmentTexture(streakSource, index: 2)
+            encoder.setFragmentTexture(streaks, index: 2)
             encoder.setFragmentSamplerState(self.linearSampler, index: 0)
         }
     }
@@ -404,13 +458,9 @@ public final class GargantuaRenderer {
     public func renderToImage(
         scene: GargantuaScene, deltaTime: Double, width: Int, height: Int
     ) -> CGImage? {
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        descriptor.usage = [.renderTarget, .shaderRead]
-        // Managed rather than shared: it is the one storage mode that reads back
-        // on both Apple Silicon and Intel.
-        descriptor.storageMode = .managed
-        guard let target = device.makeTexture(descriptor: descriptor) else { return nil }
+        guard let target = device.makeReadableTarget(width: width, height: height) else {
+            return nil
+        }
         renderSynchronously(scene: scene, deltaTime: deltaTime, to: target)
         return readBack(texture: target)
     }

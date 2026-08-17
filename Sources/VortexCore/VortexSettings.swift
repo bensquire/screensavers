@@ -1,4 +1,5 @@
 import Foundation
+import SaverCore
 
 /// What the options sheet can change.
 public struct VortexSettings: Equatable {
@@ -32,11 +33,5 @@ public struct VortexSettings: Equatable {
     /// How many particles this density asks for.
     public var particleCount: Int {
         max(1, Int((Double(Tunnel.particleCount) * density).rounded()))
-    }
-}
-
-extension Double {
-    func clamped(to range: ClosedRange<Double>) -> Double {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }

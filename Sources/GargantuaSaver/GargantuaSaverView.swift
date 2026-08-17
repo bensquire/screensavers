@@ -3,6 +3,9 @@ import GargantuaCore
 import GargantuaRender
 import SaverKit
 import ScreenSaver
+import os.log
+
+private let log = OSLog(subsystem: "com.bensquire.Gargantua", category: "screensaver")
 
 /// The screensaver entry point. `NSPrincipalClass` in Info.plist names this
 /// class, so the `@objc` name must stay exactly as written — Swift's mangled
@@ -15,6 +18,10 @@ final class GargantuaView: ScreenSaverView {
     /// Nil only if Metal is unavailable, in which case the view stays black
     /// rather than taking the screensaver host down with it.
     private var blackHole: GargantuaMetalView?
+    /// What the live view was built with, so an unchanged start does not
+    /// rebuild it. Constructing one loads the shader library, builds every
+    /// pipeline and generates its scene — far too much to do twice for nothing.
+    private var builtWith: GargantuaSettings?
 
     private lazy var configController = GargantuaConfigureSheet(store: store) {
         [weak self] settings in
@@ -61,13 +68,26 @@ final class GargantuaView: ScreenSaverView {
     /// Replaces the Metal view. Settings feed both the render targets' sizes and
     /// the scene's parameters, so a change starts a fresh one.
     private func rebuild(with settings: GargantuaSettings) {
+        guard settings != builtWith || blackHole == nil else { return }
         blackHole?.removeFromSuperview()
         blackHole = nil
+        builtWith = nil
 
-        guard let view = try? GargantuaMetalView(frame: bounds, settings: settings) else { return }
+        let view: GargantuaMetalView
+        do {
+            view = try GargantuaMetalView(frame: bounds, settings: settings)
+        } catch {
+            // Staying black is a defensible policy on a machine without a
+            // working GPU; being undiagnosable is not.
+            os_log(
+                "could not create the renderer: %{public}@", log: log, type: .error,
+                String(describing: error))
+            return
+        }
         view.autoresizingMask = [.width, .height]
         addSubview(view)
         blackHole = view
+        builtWith = settings
     }
 
     override func startAnimation() {

@@ -30,11 +30,20 @@ something `ScreenSaverEngine` can actually load. That machinery is fiddly, easy
 to get subtly wrong, and was previously duplicated per project and already
 drifting.
 
-A little more turned out to be genuinely common than expected, and now lives in
-`SaverKit`: preferences that survive being written from a sandboxed host, a
-seedable PRNG, and the options-sheet layout — which had already been got wrong
-once by building it from intrinsic widths, when System Settings presents the
-sheet wider than that.
+A little more turned out to be genuinely common than expected. It is split in
+two so the "Core is Foundation-only" rule above stays true rather than merely
+intended: `SaverCore` holds what a physics module may use — a seedable PRNG, a
+NaN-safe clamp — and `SaverKit` holds the rest, which links AppKit and Metal.
+That is preferences which survive being written from a sandboxed host, the
+options-sheet layout (got wrong once by building it from intrinsic widths, when
+System Settings presents the sheet wider than that), a `CAMetalLayer` view base,
+shader loading, and the frame-capture hook `make verify` uses.
+
+Every saver is verified the same way: the built bundle is loaded for real, both
+view instances are animated, and the frame they actually drew is asserted on. A
+saver drawing on the GPU hands its frame back through `SaverFrameCapturing`,
+because its backing store is empty and `cacheDisplay` would capture nothing —
+which is what a missing or stale `.metallib` used to look like.
 
 ## Working on them
 
@@ -70,7 +79,8 @@ that saver. It needs five repository secrets — `SIGNING_CERTIFICATE_P12_BASE64
 ## Layout
 
 ```
-Sources/SaverKit/          the little that is genuinely common to hosting a saver
+Sources/SaverCore/         shared code that is Foundation-only, so a Core can use it
+Sources/SaverKit/          the rest of what is common to hosting a saver (AppKit, Metal)
 Sources/<Saver>Core/       physics and model — Foundation only, so it is testable headlessly
 Sources/<Saver>Render/     drawing
 Sources/<Saver>Saver/      the ScreenSaverView subclass

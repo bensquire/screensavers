@@ -129,11 +129,7 @@ func renderThumbnail() -> Bool {
     }
     renderer.fixRenderScale(at: 1.0)
 
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-        pixelFormat: .bgra8Unorm, width: renderWidth, height: renderHeight, mipmapped: false)
-    descriptor.usage = [.renderTarget, .shaderRead]
-    descriptor.storageMode = .managed
-    guard let target = device.makeTexture(descriptor: descriptor) else {
+    guard let target = device.makeReadableTarget(width: renderWidth, height: renderHeight) else {
         fail("could not create the render target")
     }
 

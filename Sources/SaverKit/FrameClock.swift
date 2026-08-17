@@ -1,4 +1,5 @@
 import QuartzCore
+@_exported import SaverCore
 
 /// Turns "this callback fired" into "this much real time passed".
 ///
@@ -7,20 +8,20 @@ import QuartzCore
 /// here rather than being written out twice.
 public struct FrameClock {
 
-    /// Frames per second the scene is drawn at.
+    /// Frame rate for a saver that draws in software.
     ///
-    /// 30 rather than 60: the drawing is done in software by Core Graphics, so
-    /// the frame rate is very nearly the whole CPU cost, and at the pace the
-    /// bodies actually move — a median of a few screen points per frame — the
-    /// halved rate is not visible. Both hosts read this so they cannot drift.
-    public static let framesPerSecond: Double = 30.0
-    public static let frameInterval: Double = 1.0 / framesPerSecond
+    /// 30 rather than 60 because Core Graphics does the drawing on the CPU, so
+    /// the frame rate is very nearly the whole cost. That reasoning is not the
+    /// fleet's — the Metal savers declare their own 60 — so this is a default
+    /// for the software path rather than the rate everything runs at.
+    public static let softwareFramesPerSecond: Double = 30.0
+    public static let softwareFrameInterval: Double = 1.0 / softwareFramesPerSecond
 
     private var lastFrameTime: CFTimeInterval = 0
     /// Assumed elapsed time for the first frame, when there is no previous one.
     private let nominalInterval: Double
 
-    public init(nominalInterval: Double = FrameClock.frameInterval) {
+    public init(nominalInterval: Double = FrameClock.softwareFrameInterval) {
         self.nominalInterval = nominalInterval
     }
 

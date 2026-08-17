@@ -1,5 +1,5 @@
 import Foundation
-import SaverKit
+import SaverCore
 
 /// Diagnostics for the HUD. Energy and angular momentum are exact constants of
 /// the true motion, so these numbers are a direct readout of how much the

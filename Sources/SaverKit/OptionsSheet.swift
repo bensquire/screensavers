@@ -162,4 +162,89 @@ public final class OptionsSheet {
         grid.translatesAutoresizingMaskIntoConstraints = false
         return grid
     }
+
+    /// A wrapping paragraph of secondary text, for explaining what a control
+    /// actually does. Wraps to whatever width the sheet is given.
+    public static func note(_ text: String) -> NSTextField {
+        let field = NSTextField(wrappingLabelWithString: text)
+        field.font = NSFont.systemFont(ofSize: 11)
+        field.textColor = .secondaryLabelColor
+        field.preferredMaxLayoutWidth = 0
+        return field
+    }
+}
+
+/// One numeric setting: what it is called, the range it may take, where it lives
+/// in `Settings`, and how its value reads.
+public struct SliderSpec<Settings> {
+    public let title: String
+    public let range: ClosedRange<Double>
+    public let keyPath: WritableKeyPath<Settings, Double>
+    public let format: (Double) -> String
+
+    public init(
+        title: String,
+        range: ClosedRange<Double>,
+        keyPath: WritableKeyPath<Settings, Double>,
+        format: @escaping (Double) -> String
+    ) {
+        self.title = title
+        self.range = range
+        self.keyPath = keyPath
+        self.format = format
+    }
+}
+
+/// Builds a grid of labelled sliders and keeps their value labels in step.
+///
+/// Every saver's sheet was otherwise repeating the same three things: a spec
+/// list, an array of controls indexed by `slider.tag`, and a refresh loop. The
+/// tag-to-spec correspondence was a convention each copy had to get right —
+/// here it is the type's own invariant, which is why there is no defensive
+/// bounds check.
+public final class SliderGrid<Settings>: NSObject {
+
+    private let specs: [SliderSpec<Settings>]
+    private var labels: [NSTextField] = []
+    private let onChange: (WritableKeyPath<Settings, Double>, Double) -> Void
+
+    /// - Parameter onChange: called with the setting that moved and its new
+    ///   value, so the owner keeps sole possession of the settings struct.
+    public init(
+        specs: [SliderSpec<Settings>],
+        onChange: @escaping (WritableKeyPath<Settings, Double>, Double) -> Void
+    ) {
+        self.specs = specs
+        self.onChange = onChange
+        super.init()
+    }
+
+    /// Adds one row per spec to `grid`, reading initial values from `settings`.
+    public func install(in grid: NSGridView, settings: Settings) {
+        for (index, spec) in specs.enumerated() {
+            let slider = OptionsSheet.slider(
+                value: settings[keyPath: spec.keyPath], range: spec.range,
+                target: self, action: #selector(sliderMoved(_:)))
+            slider.tag = index
+            let label = OptionsSheet.valueLabel()
+            labels.append(label)
+            grid.addRow(with: [OptionsSheet.fieldLabel(spec.title), slider, label])
+        }
+        refresh(settings)
+    }
+
+    /// Rewrites every value label from `settings`.
+    public func refresh(_ settings: Settings) {
+        for (index, spec) in specs.enumerated() {
+            labels[index].stringValue = spec.format(settings[keyPath: spec.keyPath])
+        }
+    }
+
+    @objc private func sliderMoved(_ sender: NSSlider) {
+        let spec = specs[sender.tag]
+        // The label is this type's own business, so the owner is not obliged to
+        // call back into it — which would make the two mutually dependent.
+        labels[sender.tag].stringValue = spec.format(sender.doubleValue)
+        onChange(spec.keyPath, sender.doubleValue)
+    }
 }

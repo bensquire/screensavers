@@ -35,7 +35,7 @@ final class PackagingTests: XCTestCase {
         // ShaderLibrary asks the bundle for "Vortex.metallib"; the build script
         // names the output from METAL_LIBRARY. They have to be the same word.
         XCTAssertEqual(
-            conf["METAL_LIBRARY"], "Vortex",
+            conf["METAL_LIBRARY"], ShaderLibrary.name,
             "saver.conf builds a differently-named metallib than ShaderLibrary loads")
 
         let source = try XCTUnwrap(conf["METAL_SOURCES"])
@@ -50,7 +50,7 @@ final class PackagingTests: XCTestCase {
         let modules = try XCTUnwrap(conf["MODULES"]).split(separator: " ").map(String.init)
         // build-saver.sh compiles these in the order given, so a dependency
         // listed after its dependent will not resolve.
-        XCTAssertEqual(modules, ["SaverKit", "VortexCore", "VortexRender", "VortexSaver"])
+        XCTAssertEqual(modules, ["SaverCore", "SaverKit", "VortexCore", "VortexRender", "VortexSaver"])
 
         let frameworks = try XCTUnwrap(conf["FRAMEWORKS"]).split(separator: " ").map(String.init)
         XCTAssertTrue(frameworks.contains("Metal"), "the saver links Metal at runtime")

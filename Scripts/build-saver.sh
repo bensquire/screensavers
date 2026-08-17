@@ -53,6 +53,15 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 # Metal shaders, if the saver has any. A metallib is architecture-independent,
 # so unlike the Swift it is built once rather than per slice.
 if [ -n "${METAL_SOURCES:-}" ]; then
+  # Xcode 26 ships the Metal compiler as a separate download. Without this the
+  # failure is a bare `xcrun: error: unable to find utility "metal"`, which says
+  # nothing about the remedy — and a workflow that skipped the download would
+  # otherwise get most of the way to a shader-less bundle.
+  if ! xcrun -sdk macosx -f metal >/dev/null 2>&1; then
+    echo "error: $SAVER needs the Metal compiler, which is not installed." >&2
+    echo "       Install it with: xcodebuild -downloadComponent MetalToolchain" >&2
+    exit 1
+  fi
   echo "==> $SAVER: compiling shaders"
   air_files=()
   for source in $METAL_SOURCES; do

@@ -253,14 +253,21 @@ final class RenderTests: XCTestCase {
 
     func testNoiseVolumeIsBuiltWithMips() throws {
         let device = try makeDevice()
-        guard let texture = NoiseVolume.make(device: device) else {
-            return XCTFail("could not build the noise volume")
-        }
-        XCTAssertEqual(texture.textureType, .type3D)
+        guard let queue = device.makeCommandQueue(),
+            let texture = NoiseVolume.make(device: device, queue: queue)
+        else { return XCTFail("could not build the noise volume") }
+        XCTAssertEqual(texture.textureType, MTLTextureType.type3D)
         XCTAssertEqual(texture.width, NoiseVolume.size)
         XCTAssertEqual(texture.depth, NoiseVolume.size)
         // The marcher selects a mip explicitly to prefilter the field to its
         // sample spacing, so the chain has to be there.
         XCTAssertGreaterThan(texture.mipmapLevelCount, 5)
+
+        // Second call returns the cached volume rather than spending another
+        // ~11ms rebuilding an identical million voxels.
+        XCTAssertTrue(
+            NoiseVolume.shared(device: device, queue: queue)
+                === NoiseVolume.shared(device: device, queue: queue),
+            "the noise volume is not being cached")
     }
 }

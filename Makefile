@@ -23,9 +23,8 @@ release:
 # full-screen and preview views, animates them in real time, and renders a frame.
 verify: build
 	@BUNDLE=$$(sed -n 's/^BUNDLE_NAME="\(.*\)"$$/\1/p' savers/$(SAVER)/saver.conf); \
-	MODE=$$(sed -n 's/^VERIFY_RENDER="\(.*\)"$$/\1/p' savers/$(SAVER)/saver.conf); \
-	FLAG=""; [ "$$MODE" = "none" ] && FLAG="--no-render-check"; \
-	swift Scripts/verify-saver.swift "build/$(SAVER)/$$BUNDLE.saver" "build/$(SAVER)/check.png" $$FLAG
+	swift Scripts/verify-saver.swift "build/$(SAVER)/$$BUNDLE.saver" "build/$(SAVER)/check.png"
+
 
 # The System Settings tiles, committed rather than built in CI so a release stays a
 # pure compile-and-link. Regenerate after any change to how a scene looks.

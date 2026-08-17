@@ -1,5 +1,5 @@
 import Foundation
-import SaverKit
+import SaverCore
 
 /// A clump of hot gas going round.
 ///
@@ -78,10 +78,19 @@ public struct DiskEvents {
         }
         live.removeAll { t - $0.born > $0.life }
 
+        // Overwritten in place: replacing them would be two heap allocations a
+        // frame to express "mostly zeroes".
+        for i in 0..<Self.maxSpots {
+            spots[i] = .zero
+            spotShapes[i] = .zero
+        }
+        guard !live.isEmpty else {
+            updateFlare(time: t, rate: rate)
+            return
+        }
+
         let churn = Self.churn(time: t, parameters: p)
         let half = p.diskHalfCoefficients
-        spots = [SIMD4<Float>](repeating: .zero, count: Self.maxSpots)
-        spotShapes = [SIMD4<Float>](repeating: .zero, count: Self.maxSpots)
         for (i, spot) in live.enumerated() where i < Self.maxSpots {
             let age = (t - spot.born) / spot.life
             // Fades up and back down over its life, so a spot never appears or
@@ -102,6 +111,10 @@ public struct DiskEvents {
                 0, 0)
         }
 
+        updateFlare(time: t, rate: rate)
+    }
+
+    private mutating func updateFlare(time t: Double, rate: Double) {
         if t > nextFlareAt {
             flareUntil = t + (4 + rng.nextDouble() * 6) * rate
             // Stacks with the hot spots, so it stays modest.

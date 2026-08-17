@@ -858,7 +858,12 @@ fragment float4 post_fragment(
     c *= u.exposure;
     c = max(c, 0.0);
     c += bloom.sample(linearSampler, uv).rgb * u.bloom;
-    c += streak.sample(linearSampler, uv).rgb * u.streak * float3(0.85, 0.92, 1.25);
+    // Branching on a constant-buffer value is uniform across the pass, so this
+    // is free — and it saves a full-resolution fetch per pixel on every look
+    // that does not use streaks, which is the shipped one.
+    if (u.streak > 0.0) {
+        c += streak.sample(linearSampler, uv).rgb * u.streak * float3(0.85, 0.92, 1.25);
+    }
 
     c = aces(c);
 

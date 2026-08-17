@@ -1,4 +1,5 @@
 import Foundation
+import SaverCore
 
 /// What a viewer can change.
 public struct GargantuaSettings: Equatable {
@@ -43,18 +44,12 @@ public struct GargantuaSettings: Equatable {
     }
 
     /// The shipped look with these choices applied.
-    public func applied(to base: SceneParameters) -> SceneParameters {
-        var p = base
+    public func parameters() -> SceneParameters {
+        var p = SceneParameters()
         p.pace = pace
         p.beaming = beaming
         p.stars = stars
         return p
-    }
-}
-
-extension Double {
-    public func clamped(to range: ClosedRange<Double>) -> Double {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
 
@@ -65,26 +60,20 @@ extension Double {
 /// the winding's reset cycle can all be tested without a GPU.
 public final class GargantuaScene {
 
-    public private(set) var parameters: SceneParameters
+    public let parameters: SceneParameters
     public private(set) var camera = OrbitCamera()
     public private(set) var events: DiskEvents
     public private(set) var time: Double = 0
     public private(set) var frameIndex: Int = 0
 
-    public var settings: GargantuaSettings {
-        didSet {
-            guard settings != oldValue else { return }
-            parameters = settings.applied(to: base)
-        }
-    }
-
-    private let base: SceneParameters
+    /// Fixed for the scene's lifetime: both hosts replace the whole Metal view
+    /// when the options sheet commits, because the render targets and the GPU
+    /// buffers are sized from these too.
+    public let settings: GargantuaSettings
 
     public init(settings: GargantuaSettings = .default, seed: UInt64 = 0x6A56_1E01) {
-        let base = SceneParameters()
-        self.base = base
         self.settings = settings
-        self.parameters = settings.applied(to: base)
+        self.parameters = settings.parameters()
         self.events = DiskEvents(seed: seed)
         camera.update(time: 0, parameters: parameters)
         camera.resetHistory()

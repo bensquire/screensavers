@@ -48,7 +48,7 @@ final class PackagingTests: XCTestCase {
         // build-saver.sh compiles these in the order given, so a dependency
         // listed after its dependent will not resolve.
         XCTAssertEqual(
-            modules, ["SaverKit", "GargantuaCore", "GargantuaRender", "GargantuaSaver"])
+            modules, ["SaverCore", "SaverKit", "GargantuaCore", "GargantuaRender", "GargantuaSaver"])
 
         let frameworks = try XCTUnwrap(conf["FRAMEWORKS"]).split(separator: " ").map(String.init)
         XCTAssertTrue(frameworks.contains("Metal"))

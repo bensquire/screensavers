@@ -28,8 +28,13 @@ public struct SplitMix64: RandomNumberGenerator {
     }
 
     /// Uniform in [lower, upper).
+    ///
+    /// Built on `nextDouble` rather than `Double.random(in:using:)` so the
+    /// reproducibility promise above covers every caller — otherwise seeded
+    /// output would survive a standard-library change in some places and not
+    /// others, which is worse than not promising it at all.
     public mutating func double(_ lower: Double, _ upper: Double) -> Double {
-        Double.random(in: lower..<upper, using: &self)
+        lower + nextDouble() * (upper - lower)
     }
 
     public mutating func bool(_ probability: Double) -> Bool {
