@@ -167,6 +167,115 @@ func renderThumbnail() -> Bool {
     return true
 }
 
+/// Times the renderer, deterministically.
+///
+///   ThreeBodyApp --bench [--width 2560] [--height 1600] [--frames 300]
+///
+/// Offscreen and fixed-seed on purpose. Sampling the preview app instead gives
+/// numbers that swing from 20% to 100% between launches, because the engine
+/// seeds itself from the clock and the cost depends entirely on which scenario
+/// it picked and how long the trails have grown.
+func runBenchmark() -> Bool {
+    let args = CommandLine.arguments
+    guard args.contains("--bench") else { return false }
+
+    func value(_ name: String, _ fallback: Int) -> Int {
+        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return fallback }
+        return Int(args[i + 1]) ?? fallback
+    }
+    let width = value("--width", 2560)
+    let height = value("--height", 1600)
+    let frames = value("--frames", 300)
+    let size = CGSize(width: width, height: height)
+
+    func measure(_ label: String, _ configure: (inout SimulationSettings) -> Void) {
+        measureScenario(label, Scenarios.figureEight, configure)
+    }
+
+    func measureScenario(
+        _ label: String, _ scenario: Scenario,
+        _ configure: (inout SimulationSettings) -> Void
+    ) {
+        var settings = SimulationSettings.default
+        configure(&settings)
+        // Fixed seed and fixed scenario, so every variant draws the same thing.
+        let engine = SimulationEngine(
+            settings: settings, seed: 20_260_816, scenario: scenario)
+        let renderer = Renderer()
+
+        guard
+            let rep = NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+            let gc = NSGraphicsContext(bitmapImageRep: rep)
+        else { return }
+
+        let step = 1.0 / FrameClock.framesPerSecond
+        var drawTimes: [Double] = []
+        var updateTimes: [Double] = []
+        var t = 0.0
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = gc
+        for frame in 0..<frames {
+            let updateStart = CACurrentMediaTime()
+            engine.update(
+                deltaTime: step, viewSize: (Double(size.width), Double(size.height)))
+            let drawStart = CACurrentMediaTime()
+            t += step
+            renderer.draw(
+                engine: engine, in: gc.cgContext, size: size, time: t,
+                showHUD: settings.showHUD)
+            gc.flushGraphics()
+            // The trails need time to grow before a frame is representative.
+            if frame >= 60 {
+                updateTimes.append((drawStart - updateStart) * 1000)
+                drawTimes.append((CACurrentMediaTime() - drawStart) * 1000)
+            }
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        drawTimes.sort()
+        updateTimes.sort()
+        guard !drawTimes.isEmpty else { return }
+        let budget = 1000.0 / FrameClock.framesPerSecond
+        let draw = drawTimes[drawTimes.count / 2]
+        let update = updateTimes[updateTimes.count / 2]
+        let updateWorst = updateTimes[Int(Double(updateTimes.count) * 0.95)]
+        print(
+            String(
+                format: "  %-22s physics %6.2f ms (p95 %6.2f)   draw %5.2f ms   total %3.0f%%",
+                (label as NSString).utf8String!, update, updateWorst, draw,
+                (update + draw) / budget * 100))
+    }
+
+    print("output \(width)x\(height), \(frames) frames, fixed seed\n")
+    print("--- figure-eight (a gentle, closed orbit) ---")
+    measure("everything on") { _ in }
+    measure("no glow") { $0.showGlow = false }
+    measure("no HUD") { $0.showHUD = false }
+    measure("no stars") { $0.showStars = false }
+    measure("short trails") { $0.trailSeconds = SimulationSettings.Limits.trailSeconds.lowerBound }
+    measure("nothing but bodies") {
+        $0.showGlow = false
+        $0.showHUD = false
+        $0.showStars = false
+        $0.trailSeconds = SimulationSettings.Limits.trailSeconds.lowerBound
+    }
+
+    // Burrau's problem is the worst case the catalogue contains: three bodies
+    // in a chaotic dance with repeated close encounters, which is exactly what
+    // makes an adaptive integrator take tiny steps.
+    print("\n--- Pythagorean/Burrau (chaotic, close encounters) ---")
+    for accuracy in Accuracy.allCases {
+        measureScenario(
+            "\(accuracy.rawValue) (\(accuracy.order))", Scenarios.pythagorean
+        ) { $0.accuracy = accuracy }
+    }
+    return true
+}
+
+if runBenchmark() { exit(0) }
 if renderThumbnail() { exit(0) }
 
 let app = NSApplication.shared
