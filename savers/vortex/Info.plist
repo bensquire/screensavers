@@ -15,16 +15,16 @@
 	<key>CFBundlePackageType</key>
 	<string>BNDL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.0</string>
+	<string>1.0</string>
 	<key>CFBundleVersion</key>
-	<string>2</string>
+	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>NSPrincipalClass</key>
-	<string>SlidersVortexView</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>A tunnel of light, drawn by the GPU.</string>
+	<key>NSPrincipalClass</key>
+	<string>SlidersVortexView</string>
 </dict>
 </plist>
