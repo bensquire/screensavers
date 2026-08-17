@@ -10,12 +10,12 @@
 
 </div>
 
-| | | |
-|---|---|---|
-| **[Solar System](docs/solar-system.md)** | SceneKit | The solar system travelling through the galaxy, every planet in its real position for today's date. |
-| **[Three-Body Problem](docs/three-body.md)** | Core Graphics | The gravitational three-body problem integrated in real time, in solar masses, AU and years. |
-| **[Sliders Vortex](docs/vortex.md)** | Metal | An endless tunnel of drifting light, with the occasional discharge down the wall. |
-| **[Gargantua](docs/gargantua.md)** | Metal | A spinning black hole, ray-traced along real null geodesics in Kerr spacetime. |
+|                                              |               |                                                                                                     |
+|----------------------------------------------|---------------|-----------------------------------------------------------------------------------------------------|
+| **[Solar System](docs/solar-system.md)**     | SceneKit      | The solar system travelling through the galaxy, every planet in its real position for today's date. |
+| **[Three-Body Problem](docs/three-body.md)** | Core Graphics | The gravitational three-body problem integrated in real time, in solar masses, AU and years.        |
+| **[Sliders Vortex](docs/vortex.md)**         | Metal         | An endless tunnel of drifting light, with the occasional discharge down the wall.                   |
+| **[Gargantua](docs/gargantua.md)**           | Metal         | A spinning black hole, ray-traced along real null geodesics in Kerr spacetime.                      |
 
 Each is downloaded and installed separately — see its page, or the
 [releases](https://github.com/bensquire/screensavers/releases).
@@ -31,13 +31,13 @@ to get subtly wrong, and was previously duplicated per project and already
 drifting.
 
 A little more turned out to be genuinely common than expected. It is split in
-two so the "Core is Foundation-only" rule above stays true rather than merely
+two so the "Core is Foundation-only" rule below stays true rather than merely
 intended: `SaverCore` holds what a physics module may use — a seedable PRNG, a
 NaN-safe clamp — and `SaverKit` holds the rest, which links AppKit and Metal.
 That is preferences which survive being written from a sandboxed host, the
 options-sheet layout (got wrong once by building it from intrinsic widths, when
-System Settings presents the sheet wider than that), a `CAMetalLayer` view base,
-shader loading, and the frame-capture hook `make verify` uses.
+System Settings presents the sheet wider than that), a `CAMetalLayer` view
+base, shader loading, and the frame-capture hook `make verify` uses.
 
 Every saver is verified the same way: the built bundle is loaded for real, both
 view instances are animated, and the frame they actually drew is asserted on. A
@@ -48,19 +48,19 @@ which is what a missing or stale `.metallib` used to look like.
 ## Working on them
 
 ```sh
-make list                          # which savers exist
-make build   SAVER=three-body      # build/<saver>/<Name>.saver, ad-hoc signed
-make verify  SAVER=three-body      # load the built bundle for real and draw a frame
-make install SAVER=three-body      # build and install to ~/Library/Screen Savers
-make test                          # every saver's tests
+make list                      # which savers exist
+make build   SAVER=three-body  # build/<saver>/<Name>.saver, ad-hoc signed
+make verify  SAVER=three-body  # load the built bundle for real and draw a frame
+make install SAVER=three-body  # build and install to ~/Library/Screen Savers
+make test                      # every saver's tests
 make lint
-make all-build                     # every saver
+make all-build                 # every saver
 ```
 
-Adding a screensaver means adding `savers/<name>/` — a `saver.conf` declaring its
-modules, frameworks and bundle name, an `Info.plist`, and the two System Settings
-tiles. Nothing in `Scripts/` or the `Makefile` needs editing, and CI fails if a
-new saver is missing from its matrix.
+Adding a screensaver means adding `savers/<name>/` — a `saver.conf` declaring
+its modules, frameworks and bundle name, an `Info.plist`, and the two System
+Settings tiles. Nothing in `Scripts/` or the `Makefile` needs editing, and CI
+fails if a new saver is missing from its matrix.
 
 ## Releasing
 
@@ -72,24 +72,24 @@ git tag three-body-v1.0.0 && git push --tags
 
 That runs `.github/workflows/release.yml`, which signs with a Developer ID,
 notarises, staples the ticket, and publishes a GitHub Release containing just
-that saver. It needs five repository secrets — `SIGNING_CERTIFICATE_P12_BASE64`,
-`SIGNING_CERTIFICATE_PASSWORD`, `APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID` and
-`APPLE_API_ISSUER_ID`.
+that saver. It needs five repository secrets —
+`SIGNING_CERTIFICATE_P12_BASE64`, `SIGNING_CERTIFICATE_PASSWORD`,
+`APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`.
 
 ## Layout
 
 ```
-Sources/SaverCore/         shared code that is Foundation-only, so a Core can use it
-Sources/SaverKit/          the rest of what is common to hosting a saver (AppKit, Metal)
-Sources/<Saver>Core/       physics and model — Foundation only, so it is testable headlessly
-Sources/<Saver>Render/     drawing
-Sources/<Saver>Saver/      the ScreenSaverView subclass
-Sources/<Saver>App/        standalone window, and the thumbnail renderer
-savers/<name>/             saver.conf, Info.plist, System Settings tiles
-Scripts/                   build, sign, install, package, verify — shared by all savers
+Sources/SaverCore/      Foundation-only shared code, usable from a Core
+Sources/SaverKit/       the rest of the shared hosting code (AppKit, Metal)
+Sources/<Saver>Core/    physics and model — Foundation only, testable headlessly
+Sources/<Saver>Render/  drawing
+Sources/<Saver>Saver/   the ScreenSaverView subclass
+Sources/<Saver>App/     standalone window, and the thumbnail renderer
+savers/<name>/          saver.conf, Info.plist, System Settings tiles
+Scripts/                build, sign, install, package, verify — one copy for all
 ```
 
 SwiftPM is here for `swift test`, `swift format` and type-checking. It cannot
-emit the `MH_BUNDLE` that `ScreenSaverEngine` `dlopen`s, so `Scripts/build-saver.sh`
-drives `swiftc` directly: compile each module in dependency order, then link
-with `-bundle`.
+emit the `MH_BUNDLE` that `ScreenSaverEngine` `dlopen`s, so
+`Scripts/build-saver.sh` drives `swiftc` directly: compile each module in
+dependency order, then link with `-bundle`.
