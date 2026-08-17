@@ -1,3 +1,5 @@
+import AppKit
+import SaverKit
 import XCTest
 
 @testable import VortexRender
@@ -43,6 +45,46 @@ final class PackagingTests: XCTestCase {
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: path.path),
             "saver.conf points METAL_SOURCES at \(source), which does not exist")
+    }
+
+    /// The options sheet is built from a fixed width on purpose. A wrapping
+    /// label asked for its fitting size with nothing to wrap against reports its
+    /// text on one line, and since rows are pinned to the content width, that
+    /// propagates outward — which is how Gargantua's sheet came out 1167pt wide,
+    /// far too wide for System Settings to present.
+    @MainActor
+    func testTheOptionsSheetIsAWorkableSize() {
+        let store = VortexSettingsStore(
+            defaults: SaverPreferences(moduleIdentifier: "test.vortex.sheet"))
+        let window = VortexConfigureSheet(store: store, onCommit: { _ in }).window
+        XCTAssertEqual(window.frame.width, OptionsSheet.contentWidth, accuracy: 1)
+        XCTAssertLessThan(window.frame.height, 600, "too tall for a settings sheet")
+        XCTAssertTrue(window.canBecomeKey, "a sheet that cannot become key never appears")
+    }
+
+    /// The slider label column is sized from the longest title; a fixed 92pt
+    /// silently truncated "Doppler beaming" under the slider beside it.
+    @MainActor
+    func testSliderTitlesAreNotTruncated() {
+        let store = VortexSettingsStore(
+            defaults: SaverPreferences(moduleIdentifier: "test.vortex.labels"))
+        let window = VortexConfigureSheet(store: store, onCommit: { _ in }).window
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        func labels(_ view: NSView) -> [NSTextField] {
+            if let field = view as? NSTextField { return [field] }
+            return view.subviews.flatMap(labels)
+        }
+        let found = labels(window.contentView ?? NSView()).filter { !$0.stringValue.isEmpty }
+        XCTAssertGreaterThan(found.count, 3, "found no labels — the check would be vacuous")
+        for field in found {
+            // Wrapping paragraphs are meant to be narrower than their one-line
+            // width; only single-line labels must fit.
+            guard field.maximumNumberOfLines == 1 else { continue }
+            XCTAssertGreaterThanOrEqual(
+                field.frame.width, field.intrinsicContentSize.width - 0.5,
+                "'\(field.stringValue)' is clipped")
+        }
     }
 
     func testTheSaverIsBuiltFromTheModulesItNeeds() throws {

@@ -89,7 +89,7 @@ public final class ConfigureSheetController: NSObject {
         modeExplanation = NSTextField(wrappingLabelWithString: working.mode.explanation)
         modeExplanation.font = NSFont.systemFont(ofSize: 11)
         modeExplanation.textColor = .secondaryLabelColor
-        modeExplanation.preferredMaxLayoutWidth = 0
+        modeExplanation.preferredMaxLayoutWidth = OptionsSheet.bodyWidth
         modeBox.addArrangedSubview(modeExplanation)
         sheet.add(modeBox, stretched: true)
 

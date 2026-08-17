@@ -16,6 +16,19 @@ public final class OptionsSheet {
     /// the content width less this much on each side.
     private static let margin: CGFloat = 20
 
+    /// The sheet's width, fixed.
+    ///
+    /// It has to be pinned rather than derived. A wrapping label asked for its
+    /// fitting size with no width to wrap against reports the width of its text
+    /// on ONE line, and since the rows are pinned to the content's width, that
+    /// propagates outward and sets the width of the whole sheet — which is how
+    /// a sheet with a long explanatory paragraph came out 1167pt wide.
+    public static let contentWidth: CGFloat = 460
+
+    /// Width available to a row once both margins are taken off. Wrapping text
+    /// is given this explicitly, for the same reason.
+    public static let bodyWidth: CGFloat = contentWidth - margin * 2
+
     public let content: NSStackView
 
     public init(title: String, subtitle: String) {
@@ -25,6 +38,7 @@ public final class OptionsSheet {
         content.spacing = 14
         content.edgeInsets = NSEdgeInsets(
             top: Self.margin, left: Self.margin, bottom: Self.margin, right: Self.margin)
+        content.widthAnchor.constraint(equalToConstant: Self.contentWidth).isActive = true
 
         let header = NSStackView()
         header.orientation = .vertical
@@ -38,9 +52,7 @@ public final class OptionsSheet {
         let subtitleField = NSTextField(wrappingLabelWithString: subtitle)
         subtitleField.font = NSFont.systemFont(ofSize: 11)
         subtitleField.textColor = .secondaryLabelColor
-        // Zero means "wrap to whatever width you are actually given" rather than
-        // to a width guessed here, which would be wrong at every other size.
-        subtitleField.preferredMaxLayoutWidth = 0
+        subtitleField.preferredMaxLayoutWidth = Self.bodyWidth
         header.addArrangedSubview(subtitleField)
 
         add(header, stretched: true)
@@ -87,7 +99,7 @@ public final class OptionsSheet {
         add(buttons, stretched: true)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 620),
             styleMask: [.titled],
             backing: .buffered,
             defer: false)
@@ -116,13 +128,21 @@ public final class OptionsSheet {
         return field
     }
 
-    /// The left column of a grid row. Fixed width so every row lines up.
-    public static func fieldLabel(_ text: String, width: CGFloat = 92) -> NSTextField {
+    /// The left column of a grid row. A fixed width is what makes every row line
+    /// up — but pass `nil` to leave it unconstrained, for a caller that measures
+    /// its own titles and sets one width across all of them.
+    public static func fieldLabel(_ text: String, width: CGFloat? = 92) -> NSTextField {
         let field = NSTextField(labelWithString: text)
         field.alignment = .right
-        field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        if let width {
+            field.widthAnchor.constraint(equalToConstant: width).isActive = true
+        }
         return field
     }
+
+    /// Narrowest label column worth using, so a sheet of short titles still has
+    /// its sliders lined up rather than jammed against the left margin.
+    public static let minimumLabelWidth: CGFloat = 92
 
     /// The right column of a grid row: the current value of the control beside
     /// it. Monospaced digits so the text does not jitter as a slider moves.
@@ -164,12 +184,12 @@ public final class OptionsSheet {
     }
 
     /// A wrapping paragraph of secondary text, for explaining what a control
-    /// actually does. Wraps to whatever width the sheet is given.
+    /// actually does.
     public static func note(_ text: String) -> NSTextField {
         let field = NSTextField(wrappingLabelWithString: text)
         field.font = NSFont.systemFont(ofSize: 11)
         field.textColor = .secondaryLabelColor
-        field.preferredMaxLayoutWidth = 0
+        field.preferredMaxLayoutWidth = bodyWidth
         return field
     }
 }
@@ -221,6 +241,14 @@ public final class SliderGrid<Settings>: NSObject {
 
     /// Adds one row per spec to `grid`, reading initial values from `settings`.
     public func install(in grid: NSGridView, settings: Settings) {
+        // Size the label column to the longest title rather than to a constant:
+        // a fixed 92pt silently truncated "Doppler beaming" and ran it under the
+        // slider beside it.
+        let titles = specs.map { OptionsSheet.fieldLabel($0.title, width: nil) }
+        let column = max(
+            OptionsSheet.minimumLabelWidth,
+            titles.map { $0.intrinsicContentSize.width }.max() ?? 0)
+
         for (index, spec) in specs.enumerated() {
             let slider = OptionsSheet.slider(
                 value: settings[keyPath: spec.keyPath], range: spec.range,
@@ -228,7 +256,9 @@ public final class SliderGrid<Settings>: NSObject {
             slider.tag = index
             let label = OptionsSheet.valueLabel()
             labels.append(label)
-            grid.addRow(with: [OptionsSheet.fieldLabel(spec.title), slider, label])
+            let title = titles[index]
+            title.widthAnchor.constraint(equalToConstant: column.rounded(.up)).isActive = true
+            grid.addRow(with: [title, slider, label])
         }
         refresh(settings)
     }
