@@ -5,17 +5,17 @@
 **A macOS screensaver: the solar system travelling through the galaxy, with
 every planet in its real position for today's date.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/bensquire/the-solar-system/ci.yml?branch=main&label=ci&logo=github&cacheSeconds=300)](https://github.com/bensquire/the-solar-system/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/bensquire/the-solar-system/release.yml?label=release&logo=github&cacheSeconds=300)](https://github.com/bensquire/the-solar-system/actions/workflows/release.yml)
-[![Latest](https://img.shields.io/github/v/release/bensquire/the-solar-system?include_prereleases&label=latest&logo=apple&cacheSeconds=300)](https://github.com/bensquire/the-solar-system/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/bensquire/screensavers/ci.yml?branch=main&label=ci&logo=github&cacheSeconds=300)](https://github.com/bensquire/screensavers/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/bensquire/screensavers/release.yml?label=release&logo=github&cacheSeconds=300)](https://github.com/bensquire/screensavers/actions/workflows/release.yml)
+[![Latest](https://img.shields.io/github/v/release/bensquire/screensavers?include_prereleases&label=latest&logo=apple&cacheSeconds=300)](https://github.com/bensquire/screensavers/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-007aff?logo=apple)](https://www.apple.com/macos/)
-[![License](https://img.shields.io/github/license/bensquire/the-solar-system?label=license&cacheSeconds=300)](LICENSE)
+[![License](https://img.shields.io/github/license/bensquire/screensavers?label=license&cacheSeconds=300)](LICENSE)
 
-[**Download latest &rarr;**](https://github.com/bensquire/the-solar-system/releases/latest)
+[**Download latest &rarr;**](https://github.com/bensquire/screensavers/releases/latest)
 
 <br/>
 
-<img src="docs/screenshot.png" alt="The solar system drawn as a helix: the Sun trailing away to the lower left with the planets' orbits wound around its path through the galaxy" width="900"/>
+<img src="solar-system.png" alt="The solar system drawn as a helix: the Sun trailing away to the lower left with the planets' orbits wound around its path through the galaxy" width="900"/>
 
 <sub>A frame from the screensaver, rendered by the thing itself.</sub>
 
@@ -36,7 +36,7 @@ No network access, no data files, nothing to install but the bundle.
 ## Install
 
 Download and unzip the release from
-[Releases](https://github.com/bensquire/the-solar-system/releases/latest),
+[Releases](https://github.com/bensquire/screensavers/releases/latest),
 double-click `Solar System.saver` (or move it into `~/Library/Screen Savers/`),
 then pick **Solar System** in System Settings &rarr; Screen Saver.
 
@@ -77,14 +77,16 @@ thing on screen that tells you how far ahead of today you are.
 
 ## Build from source
 
+Every target takes `SAVER=`, because this repository builds four of them:
+
 ```sh
-make build      # build "Solar System.saver" (universal, ad-hoc signed)
-make install    # build and install into ~/Library/Screen Savers/
-make verify     # load the built bundle for real and render a frame from it
-make test       # run the test suite
-make lint       # swift-format --strict
-make format     # apply swift-format in place
-make release    # build and package dist/SolarSystem-<version>.zip
+make build   SAVER=solar-system   # "Solar System.saver", universal, ad-hoc signed
+make install SAVER=solar-system   # build and install into ~/Library/Screen Savers/
+make verify  SAVER=solar-system   # load the built bundle and assert on the frame it drew
+make release SAVER=solar-system   # build and package dist/SolarSystem-<version>.zip
+make test                         # every saver's tests
+make lint                         # swift-format --strict
+make format                       # apply swift-format in place
 make clean
 ```
 
@@ -137,8 +139,10 @@ push.
 Tag and push; CI builds, signs, notarizes, staples, verifies both
 architectures, and publishes the zip.
 
+Each screensaver versions independently, so the tag names which one:
+
 ```sh
-git tag v1.0.0 && git push --tags
+git tag solar-system-v1.0.0 && git push --tags
 ```
 
 Signing needs five repository secrets — a Developer ID Application cert

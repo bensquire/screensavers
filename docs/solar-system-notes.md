@@ -307,7 +307,7 @@ For a local unsigned archive — quarantined on download, so only useful for
 testing the packaging:
 
 ```sh
-VERSION=1.0.0 make release   # -> dist/SolarSystem-1.0.0.zip
+VERSION=1.0.0 make release SAVER=solar-system   # -> dist/SolarSystem-1.0.0.zip
 ```
 
 ## Traps found the hard way

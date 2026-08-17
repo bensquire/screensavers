@@ -5,17 +5,17 @@
 **A macOS screensaver that integrates the gravitational three-body problem in
 real time — no canned animation, no fudged orbits.**
 
-[![CI](https://img.shields.io/github/actions/workflow/status/bensquire/three-body-problem/ci.yml?branch=main&label=ci&logo=github&cacheSeconds=300)](https://github.com/bensquire/three-body-problem/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/actions/workflow/status/bensquire/three-body-problem/release.yml?label=release&logo=github&cacheSeconds=300)](https://github.com/bensquire/three-body-problem/actions/workflows/release.yml)
-[![Latest](https://img.shields.io/github/v/release/bensquire/three-body-problem?include_prereleases&label=latest&logo=apple&cacheSeconds=300)](https://github.com/bensquire/three-body-problem/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/bensquire/screensavers/ci.yml?branch=main&label=ci&logo=github&cacheSeconds=300)](https://github.com/bensquire/screensavers/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/actions/workflow/status/bensquire/screensavers/release.yml?label=release&logo=github&cacheSeconds=300)](https://github.com/bensquire/screensavers/actions/workflows/release.yml)
+[![Latest](https://img.shields.io/github/v/release/bensquire/screensavers?include_prereleases&label=latest&logo=apple&cacheSeconds=300)](https://github.com/bensquire/screensavers/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-007aff?logo=apple)](https://www.apple.com/macos/)
-[![License](https://img.shields.io/github/license/bensquire/three-body-problem?label=license&cacheSeconds=300)](LICENSE)
+[![License](https://img.shields.io/github/license/bensquire/screensavers?label=license&cacheSeconds=300)](LICENSE)
 
-[**Download latest &rarr;**](https://github.com/bensquire/three-body-problem/releases/latest)
+[**Download latest &rarr;**](https://github.com/bensquire/screensavers/releases/latest)
 
 <br/>
 
-<img src="docs/screenshot.png" alt="Three equal masses tracing the figure-eight orbit: three glowing bodies chasing each other around a single closed curve against a starfield" width="900"/>
+<img src="three-body.png" alt="Three equal masses tracing the figure-eight orbit: three glowing bodies chasing each other around a single closed curve against a starfield" width="900"/>
 
 <sub>The figure-eight orbit, drawn by the thing itself.</sub>
 
@@ -54,13 +54,16 @@ show the readout, the glow, and the stars.
 
 ```sh
 make test       # the physics measurements
-make build      # build/Three-Body Problem.saver, ad-hoc signed
-make verify     # load the built bundle for real and draw a frame
-make install    # build and install to ~/Library/Screen Savers
-make run        # watch it in a window (MODE=known|random|both)
+make build   SAVER=three-body   # build/three-body/Three-Body Problem.saver, ad-hoc signed
+make verify  SAVER=three-body   # load the built bundle and assert on the frame it drew
+make install SAVER=three-body   # build and install to ~/Library/Screen Savers
+make bench   SAVER=three-body   # time the renderer, fixed seed, release build
 ```
 
-Releases are cut by pushing a tag: `git tag v1.0.0 && git push --tags`. That
+To watch it in a window while iterating: `swift run -c release ThreeBodyApp`.
+
+Releases are cut by pushing a tag that names the saver:
+`git tag three-body-v1.0.0 && git push --tags`. That
 runs `.github/workflows/release.yml`, which signs with a Developer ID,
 notarizes, staples the ticket, and publishes a GitHub Release. It needs five
 repository secrets — `SIGNING_CERTIFICATE_P12_BASE64`,
