@@ -21,9 +21,13 @@ let package = Package(
         .library(name: "VortexCore", targets: ["VortexCore"]),
         .library(name: "VortexRender", targets: ["VortexRender"]),
         .library(name: "VortexSaver", targets: ["VortexSaver"]),
+        .library(name: "GargantuaCore", targets: ["GargantuaCore"]),
+        .library(name: "GargantuaRender", targets: ["GargantuaRender"]),
+        .library(name: "GargantuaSaver", targets: ["GargantuaSaver"]),
         .executable(name: "SolarSystemApp", targets: ["SolarSystemApp"]),
         .executable(name: "ThreeBodyApp", targets: ["ThreeBodyApp"]),
         .executable(name: "VortexApp", targets: ["VortexApp"]),
+        .executable(name: "GargantuaApp", targets: ["GargantuaApp"]),
         .executable(name: "ssverify", targets: ["ssverify"]),
     ],
     targets: [
@@ -80,6 +84,21 @@ let package = Package(
             name: "VortexApp", dependencies: ["VortexRender", "VortexCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
+        .target(
+            name: "GargantuaCore", dependencies: ["SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "GargantuaRender", dependencies: ["GargantuaCore", "SaverKit"],
+            exclude: ["Gargantua.metal"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(
+            name: "GargantuaSaver",
+            dependencies: ["GargantuaRender", "GargantuaCore", "SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .executableTarget(
+            name: "GargantuaApp", dependencies: ["GargantuaRender", "GargantuaCore", "SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+
         .testTarget(
             name: "SolarSystemCoreTests",
             dependencies: ["SolarSystemCore", "SolarSystemRender"],
@@ -89,6 +108,9 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "VortexTests", dependencies: ["VortexCore", "VortexRender"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+        .testTarget(
+            name: "GargantuaTests", dependencies: ["GargantuaCore", "GargantuaRender"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
     ]
 )

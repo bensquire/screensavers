@@ -15,6 +15,7 @@
 | **[Solar System](docs/solar-system.md)** | SceneKit | The solar system travelling through the galaxy, every planet in its real position for today's date. |
 | **[Three-Body Problem](docs/three-body.md)** | Core Graphics | The gravitational three-body problem integrated in real time, in solar masses, AU and years. |
 | **[Sliders Vortex](docs/vortex.md)** | Metal | An endless tunnel of drifting light, with the occasional discharge down the wall. |
+| **[Gargantua](docs/gargantua.md)** | Metal | A spinning black hole, ray-traced along real null geodesics in Kerr spacetime. |
 
 Each is downloaded and installed separately — see its page, or the
 [releases](https://github.com/bensquire/screensavers/releases).

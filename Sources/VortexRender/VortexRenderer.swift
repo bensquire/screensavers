@@ -1,5 +1,7 @@
+import CoreGraphics
 import Foundation
 import Metal
+import SaverKit
 import VortexCore
 
 /// Draws the tunnel.
@@ -296,5 +298,11 @@ public final class VortexRenderer {
 
     public func makeCommandBuffer() -> MTLCommandBuffer? {
         commandQueue.makeCommandBuffer()
+    }
+
+    /// Copies a rendered texture back to the CPU. The texture must have been
+    /// created with readable storage.
+    public func readBack(texture: MTLTexture) -> CGImage? {
+        texture.readBack(using: commandQueue)
     }
 }

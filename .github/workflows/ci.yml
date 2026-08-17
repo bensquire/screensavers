@@ -38,7 +38,7 @@ jobs:
       matrix:
         # Kept in step with savers/ by the "every saver is covered" check below,
         # so adding a screensaver cannot silently go untested.
-        saver: [solar-system, three-body, vortex]
+        saver: [solar-system, three-body, vortex, gargantua]
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
