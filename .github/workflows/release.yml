@@ -1,0 +1,229 @@
+name: Release
+
+# Builds one Developer ID signed + notarized saver, zips it, and publishes a GitHub
+# Release. Each screensaver versions independently, so a tag names which one:
+#
+#   git tag three-body-v1.0.0   && git push --tags
+#   git tag solar-system-v1.1.0 && git push --tags
+#
+# Required repository secrets:
+#   SIGNING_CERTIFICATE_P12_BASE64  Developer ID Application cert, p12, base64
+#   SIGNING_CERTIFICATE_PASSWORD    p12 password
+#   APPLE_API_KEY_BASE64            App Store Connect API key (.p8), base64
+#   APPLE_API_KEY_ID                key id
+#   APPLE_API_ISSUER_ID             issuer id
+
+on:
+  push:
+    tags: ["*-v*"]
+  workflow_dispatch:
+    inputs:
+      saver:
+        description: "Saver directory name, e.g. three-body"
+        required: true
+      version:
+        description: "Version, without the leading v"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, publish
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Resolve saver and version from the tag
+        id: what
+        run: |
+          if [[ -n "${{ inputs.saver }}" ]]; then
+            SAVER="${{ inputs.saver }}"; VERSION="${{ inputs.version }}"
+          else
+            # three-body-v1.2.0 -> saver "three-body", version "1.2.0"
+            SAVER="${GITHUB_REF_NAME%-v*}"
+            VERSION="${GITHUB_REF_NAME##*-v}"
+          fi
+          if [[ ! -f "savers/$SAVER/saver.conf" ]]; then
+            echo "::error::tag names saver '$SAVER', which has no savers/$SAVER/saver.conf"
+            ls savers
+            exit 1
+          fi
+          # A prerelease tag (three-body-v1.1.0-beta.1) still has to put a plain numeric
+          # version in the plist — CFBundleShortVersionString rejects the suffix.
+          NUMERIC="${VERSION%%-*}"
+          IS_PRERELEASE=false
+          [[ "$VERSION" == *-* ]] && IS_PRERELEASE=true
+          source "savers/$SAVER/saver.conf"
+          {
+            echo "saver=$SAVER"
+            echo "version=$VERSION"
+            echo "numeric=$NUMERIC"
+            echo "prerelease=$IS_PRERELEASE"
+            echo "bundle_name=$BUNDLE_NAME"
+            echo "executable=$EXECUTABLE"
+            echo "zip_prefix=$ZIP_PREFIX"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Lint and test
+        run: |
+          make lint
+          make test
+
+      - name: Import Developer ID Application cert
+        env:
+          CERT_P12_BASE64: ${{ secrets.SIGNING_CERTIFICATE_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          # Isolated keychain so the cert dies with the runner.
+          KEYCHAIN_PWD=$(uuidgen)
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo -n "$CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          # `security import` reports a bad file and a bad password with the same
+          # "user name or passphrase is not correct", which leaves you guessing which of
+          # two secrets to re-do. Separate them first. None of this prints a secret:
+          # only a byte count, a two-byte file magic, and which of the checks failed.
+          BYTES=$(wc -c < "$CERT_PATH" | tr -d ' ')
+          MAGIC=$(head -c 2 "$CERT_PATH" | xxd -p)
+          echo "decoded p12: ${BYTES} bytes, magic ${MAGIC} (expect 3082)"
+          if [[ "$BYTES" -lt 500 || "$MAGIC" != "3082" ]]; then
+            echo "::error::SIGNING_CERTIFICATE_P12_BASE64 did not decode to a PKCS#12 file."
+            echo "::error::Re-export the cert WITH its private key and encode with: base64 -i cert.p12 | pbcopy"
+            exit 1
+          fi
+          if [[ "$CERT_PASSWORD" != "$(printf '%s' "$CERT_PASSWORD" | tr -d '\r\n')" ]]; then
+            echo "::error::SIGNING_CERTIFICATE_PASSWORD contains a newline (echo adds one);"
+            echo "::error::re-set it with: printf '%s' 'your-password' | pbcopy"
+            exit 1
+          fi
+          if ! openssl pkcs12 -in "$CERT_PATH" -passin env:CERT_PASSWORD -noout 2>"$RUNNER_TEMP/ssl.err"; then
+            if grep -qi "mac verify failure\|invalid password" "$RUNNER_TEMP/ssl.err"; then
+              echo "::error::The p12 is valid but SIGNING_CERTIFICATE_PASSWORD does not open it."
+            else
+              echo "::error::The p12 could not be parsed:"; sed 's/^/::error::  /' "$RUNNER_TEMP/ssl.err"
+            fi
+            exit 1
+          fi
+          echo "p12 opens with the supplied password"
+
+          security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | tr -d '"' | xargs)
+          rm -f "$CERT_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Build signed
+        env:
+          VERSION: ${{ steps.what.outputs.numeric }}
+          CODESIGN_IDENTITY: "Developer ID Application"
+        run: make build SAVER=${{ steps.what.outputs.saver }}
+
+      - name: Verify bundle before notarizing
+        run: |
+          SAVER="build/${{ steps.what.outputs.saver }}/${{ steps.what.outputs.bundle_name }}.saver"
+          EXE="${{ steps.what.outputs.executable }}"
+          lipo -archs "$SAVER/Contents/MacOS/$EXE" | grep -q "arm64"
+          lipo -archs "$SAVER/Contents/MacOS/$EXE" | grep -q "x86_64"
+          codesign --verify --strict --verbose=2 "$SAVER"
+          # Fail loudly rather than silently shipping an ad-hoc build, which would need
+          # the Gatekeeper quarantine dance on every download.
+          codesign -dvv "$SAVER" 2>&1 | grep -q "Authority=Developer ID Application" \
+            || { echo "::error::bundle is not Developer ID signed"; exit 1; }
+          # Notarisation rejects anything without the hardened runtime.
+          codesign -d --verbose=2 "$SAVER" 2>&1 | grep -q "flags=.*runtime" \
+            || { echo "::error::bundle is not signed with the hardened runtime"; exit 1; }
+          PLIST_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
+            "$SAVER/Contents/Info.plist")
+          test "$PLIST_VERSION" = "${{ steps.what.outputs.numeric }}"
+
+      - name: Load, animate and draw
+        run: make verify SAVER=${{ steps.what.outputs.saver }}
+
+      - name: Notarize and staple
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          echo -n "$APPLE_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          SAVER="build/${{ steps.what.outputs.saver }}/${{ steps.what.outputs.bundle_name }}.saver"
+          # notarytool takes an archive, so submit a zip of the bundle, then staple the
+          # ticket onto the bundle itself.
+          ditto -c -k --keepParent "$SAVER" "$RUNNER_TEMP/notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+            --key "$KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" --wait
+          xcrun stapler staple "$SAVER"
+          xcrun stapler validate "$SAVER"
+
+      - name: Package
+        run: |
+          # Zip AFTER stapling so the ticket travels inside the download and the saver
+          # validates offline.
+          Scripts/make-zip.sh \
+            "build/${{ steps.what.outputs.saver }}/${{ steps.what.outputs.bundle_name }}.saver" \
+            "dist/${{ steps.what.outputs.zip_prefix }}-${{ steps.what.outputs.version }}.zip"
+
+      - name: Wipe transient secrets
+        if: always()
+        run: |
+          rm -f "$APPLE_API_KEY_PATH"
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+
+      - name: Generate release notes
+        run: |
+          SAVER="${{ steps.what.outputs.saver }}"
+          NAME="${{ steps.what.outputs.bundle_name }}"
+          # Previous release of *this* saver, so the changelog is not polluted by
+          # the other one's commits.
+          PREV=$(git tag --sort=-creatordate | grep "^${SAVER}-v" | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          {
+            echo "## $NAME ${{ steps.what.outputs.version }}"
+            echo
+            if [[ -n "$PREV" ]]; then
+              echo "### Changes since $PREV"
+              git log --pretty='- %s' "$PREV..HEAD" -- "savers/$SAVER" Sources Scripts | head -50
+            else
+              echo "First tagged release of $NAME from this repository."
+            fi
+            echo
+            echo "### Install"
+            echo "1. Download and unzip \`$NAME.saver\` below"
+            echo "2. Double-click it, or move it to \`~/Library/Screen Savers/\`"
+            echo "3. Pick **$NAME** in System Settings → Screen Saver"
+            echo
+            echo "Signed with a Developer ID and notarized by Apple, so it installs"
+            echo "without a Gatekeeper warning."
+            echo
+            echo "Universal (Apple Silicon + Intel), macOS 14+."
+          } > release_notes.md
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRERELEASE_FLAG=""
+          [[ "${{ steps.what.outputs.prerelease }}" == "true" ]] && PRERELEASE_FLAG="--prerelease"
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/${{ steps.what.outputs.zip_prefix }}-${{ steps.what.outputs.version }}.zip" \
+            --title "${{ steps.what.outputs.bundle_name }} ${{ steps.what.outputs.version }}" \
+            --notes-file release_notes.md \
+            $PRERELEASE_FLAG
