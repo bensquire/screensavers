@@ -33,12 +33,8 @@ jobs:
     name: Build, sign, publish
     runs-on: macos-15
     timeout-minutes: 40
-    # On the job, not on the build step. `make verify` depends on `build`, so a
-    # later step that re-ran it with this unset rebuilt the bundle and re-signed
-    # it ad-hoc — discarding the Developer ID signature after it had already been
-    # checked. Apple rejected the result with "not signed with a valid Developer
-    # ID certificate" and "does not include a secure timestamp". Setting it here
-    # means every build in the job signs the same way.
+    # On the job rather than on the build step, so nothing can rebuild with a
+    # different identity than the one that will be notarized.
     env:
       CODESIGN_IDENTITY: "Developer ID Application"
     steps:
@@ -150,8 +146,16 @@ jobs:
           VERSION: ${{ steps.what.outputs.numeric }}
         run: make build SAVER=${{ steps.what.outputs.saver }}
 
+      # The script directly, not `make verify` — that target depends on `build`,
+      # so it would rebuild, and a release must verify the exact bundle it is
+      # about to notarize rather than a fresh one that merely resembles it. The
+      # rebuild is also what discarded the Developer ID signature and the stamped
+      # version on the two previous attempts.
       - name: Load, animate and draw
-        run: make verify SAVER=${{ steps.what.outputs.saver }}
+        run: |
+          SAVER="build/${{ steps.what.outputs.saver }}/${{ steps.what.outputs.bundle_name }}.saver"
+          swift Scripts/verify-saver.swift "$SAVER" \
+            "build/${{ steps.what.outputs.saver }}/check.png"
 
       - name: Verify bundle before notarizing
         run: |
