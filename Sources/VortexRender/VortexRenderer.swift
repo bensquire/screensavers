@@ -20,9 +20,8 @@ public final class VortexRenderer {
     /// introduces is invisible while it removes about a third of the pixel work.
     public static let sceneScale = 0.85
 
-    /// Frames per second. Unlike the Core Graphics savers this is GPU work, and
-    /// the streaks move fast enough that halving the rate is plainly visible.
-    public static let framesPerSecond: Double = 60
+    /// Frames per second — `FrameClock`'s, which is the whole fleet's.
+    public static var framesPerSecond: Double { FrameClock.framesPerSecond }
 
     /// `setVertexBytes` takes at most 4KB. A bolt subdivides to 145 points — 290
     /// vertices, 2320 bytes — so lightning goes through the same path as the

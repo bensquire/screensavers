@@ -68,6 +68,11 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
         autoresizingMask = [.width, .height]
         self.allowsCameraControl = allowsCameraControl
         isPlaying = true
+        // SceneKit drives its own display link, so without this it renders at
+        // the panel's native rate — 60 or 120 — regardless of what the hosting
+        // ScreenSaverView's timer is doing. It was the most expensive of the
+        // four savers by a distance for exactly that reason.
+        preferredFramesPerSecond = Int(FrameClock.framesPerSecond)
         delegate = self
         overlaySKScene = renderer.overlayScene
         reframeIfNeeded()

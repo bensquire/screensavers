@@ -63,6 +63,11 @@ a uniform the particle shaders read, so the ring shows up as the particles it
 passes over brightening and fattening. That is what sells the tunnel as a
 volume of stuff rather than a flat backdrop.
 
+All four savers here run at 30fps. Cost is very nearly proportional to frames
+drawn, and nothing in this scene moves in a way that needs more: a streak is
+drawn as its own motion blur, spanning 140ms of the particle clock, so
+consecutive frames overlap rather than leaving gaps.
+
 ### On the port
 
 This was a WebGL page in a `WKWebView` until it was rewritten in Swift and

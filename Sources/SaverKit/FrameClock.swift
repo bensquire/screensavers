@@ -8,20 +8,24 @@ import QuartzCore
 /// here rather than being written out twice.
 public struct FrameClock {
 
-    /// Frame rate for a saver that draws in software.
+    /// Frames per second, for every saver here.
     ///
-    /// 30 rather than 60 because Core Graphics does the drawing on the CPU, so
-    /// the frame rate is very nearly the whole cost. That reasoning is not the
-    /// fleet's — the Metal savers declare their own 60 — so this is a default
-    /// for the software path rather than the rate everything runs at.
-    public static let softwareFramesPerSecond: Double = 30.0
-    public static let softwareFrameInterval: Double = 1.0 / softwareFramesPerSecond
+    /// 30, and it is a policy rather than a per-saver tuning decision. Cost is
+    /// very nearly proportional to frames drawn whether the drawing is done by
+    /// Core Graphics on the CPU, by SceneKit, or by a per-pixel raymarcher — so
+    /// the frame rate is the one dial that halves the load of all of them at
+    /// once. These run unattended for hours on a laptop that is usually on
+    /// battery, and nothing here moves fast enough for 60 to be worth twice the
+    /// power: the fastest thing on screen is a vortex streak, which is drawn as
+    /// its own motion blur and so does not judder when frames are further apart.
+    public static let framesPerSecond: Double = 30.0
+    public static let frameInterval: Double = 1.0 / framesPerSecond
 
     private var lastFrameTime: CFTimeInterval = 0
     /// Assumed elapsed time for the first frame, when there is no previous one.
     private let nominalInterval: Double
 
-    public init(nominalInterval: Double = FrameClock.softwareFrameInterval) {
+    public init(nominalInterval: Double = FrameClock.frameInterval) {
         self.nominalInterval = nominalInterval
     }
 
