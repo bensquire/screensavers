@@ -72,10 +72,17 @@ git tag three-body-v1.0.0
 git push origin refs/tags/three-body-v1.0.0
 ```
 
-Push release tags **one at a time**, and push the ref explicitly rather than
-using `--tags`. GitHub drops the `push` event when several tags arrive in one
-go: four tags pushed together produced no release runs at all, silently, and
-re-pushing a single tag on its own started one immediately.
+Two things about that, both of which fail silently:
+
+- **Push tags one at a time**, and push the ref explicitly rather than using
+  `--tags`. GitHub drops the `push` event when several arrive together: four
+  tags pushed at once produced no release runs at all, and re-pushing a single
+  tag on its own started one immediately.
+- **Tag after the workflow you need is on `main`.** A tag build runs
+  `release.yml` *as it was at the tagged commit*, not as it is now — so a tag
+  created before a pipeline fix will keep failing in the way that fix repaired.
+  Move the tag (`git tag -d`, delete the remote ref, re-tag, push) and it picks
+  up the current workflow.
 
 That runs `.github/workflows/release.yml`, which signs with a Developer ID,
 notarises, staples the ticket, and publishes a GitHub Release containing just
