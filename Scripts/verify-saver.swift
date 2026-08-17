@@ -57,10 +57,20 @@ for isPreview in [false, true] {
         fail("init(frame:isPreview: \(isPreview)) returned nil")
     }
 
+    // Real time has to pass between frames: the engine derives its timestep
+    // from the wall clock, so a tight loop advances the simulation by
+    // microseconds and renders the opening frame 120 times over. Pacing this
+    // properly is what makes the render check below meaningful — otherwise it
+    // would pass on a scene that never moved.
     view.startAnimation()
-    for _ in 0..<120 { view.animateOneFrame() }
+    let frames = 90
+    for _ in 0..<frames {
+        view.animateOneFrame()
+        Thread.sleep(forTimeInterval: 1.0 / 30.0)
+    }
     view.stopAnimation()
-    print("instance:      isPreview=\(isPreview) animated 120 frames")
+    print("instance:      isPreview=\(isPreview) animated \(frames) frames over "
+        + String(format: "%.0f s", Double(frames) / 30.0))
 
     guard !isPreview else { continue }
 
