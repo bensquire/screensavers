@@ -27,7 +27,7 @@ final class SimulationSurfaceView: NSView {
     func start() {
         stop()
         frameClock.reset()
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: FrameClock.frameInterval, repeats: true) { [weak self] _ in
             self?.tick()
         }
         // Keep animating while menus are tracking or the window is resizing.

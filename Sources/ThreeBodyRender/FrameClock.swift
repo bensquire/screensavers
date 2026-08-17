@@ -7,11 +7,21 @@ import ThreeBodyCore
 /// `Timer` — need exactly this and nothing else from each other, so it lives
 /// here rather than being written out twice.
 public struct FrameClock {
+
+    /// Frames per second the scene is drawn at.
+    ///
+    /// 30 rather than 60: the drawing is done in software by Core Graphics, so
+    /// the frame rate is very nearly the whole CPU cost, and at the pace the
+    /// bodies actually move — a median of a few screen points per frame — the
+    /// halved rate is not visible. Both hosts read this so they cannot drift.
+    public static let framesPerSecond: Double = 30.0
+    public static let frameInterval: Double = 1.0 / framesPerSecond
+
     private var lastFrameTime: CFTimeInterval = 0
     /// Assumed elapsed time for the first frame, when there is no previous one.
     private let nominalInterval: Double
 
-    public init(nominalInterval: Double = 1.0 / 60.0) {
+    public init(nominalInterval: Double = FrameClock.frameInterval) {
         self.nominalInterval = nominalInterval
     }
 

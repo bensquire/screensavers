@@ -334,6 +334,12 @@ public final class Renderer {
             let t = Double(band) / Double(bandCount - 1)
             let fade = t * t
 
+            // Antialiasing is the single most expensive thing this renderer
+            // does — measured at roughly seven times the cost of the same
+            // strokes without it. The bright, thick head of the trail needs it;
+            // the older bands are thin and faint enough that the stair-stepping
+            // is not visible against black, so they go without.
+            ctx.setShouldAntialias(t > 0.55)
             ctx.setLineWidth(CGFloat((0.5 + 1.9 * t) * uiScale))
             ctx.setStrokeColor(
                 red: CGFloat(color.r), green: CGFloat(color.g),
@@ -359,8 +365,8 @@ public final class Renderer {
             ctx.beginPath()
             ctx.addLines(between: Array(points[bloomStart...]))
             ctx.strokePath()
-            ctx.setShouldAntialias(true)
         }
+        ctx.setShouldAntialias(true)
     }
 
     // MARK: - Bodies
