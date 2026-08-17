@@ -34,11 +34,11 @@ final class GargantuaView: ScreenSaverView {
             ?? GargantuaSettingsStore.bundleIdentifier
         self.store = GargantuaSettingsStore(
             defaults: SaverPreferences(moduleIdentifier: identifier))
-        self.frameClock = FrameClock(nominalInterval: 1.0 / GargantuaRenderer.framesPerSecond)
+        self.frameClock = FrameClock(nominalInterval: FrameClock.frameInterval)
 
         super.init(frame: frame, isPreview: isPreview)
 
-        animationTimeInterval = 1.0 / GargantuaRenderer.framesPerSecond
+        animationTimeInterval = FrameClock.frameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         rebuild(with: Self.settings(from: store, isPreview: isPreview))

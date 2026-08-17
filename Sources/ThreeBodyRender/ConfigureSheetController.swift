@@ -95,8 +95,13 @@ public final class ConfigureSheetController: NSObject {
 
         sheet.addSeparator()
 
-        // Numeric controls, aligned in a grid.
+        // Numeric controls, aligned in a grid. The column is sized across the
+        // popup's label as well as the sliders', since they share it — this
+        // sheet builds its own rows rather than going through SliderGrid, so it
+        // has to ask for the width explicitly.
         let grid = OptionsSheet.grid()
+        let column = OptionsSheet.labelColumnWidth(
+            fitting: ["Integrator"] + Self.sliderSpecs.map(\.title))
 
         accuracyPopUp = NSPopUpButton()
         accuracyPopUp.addItems(withTitles: Accuracy.allCases.map { $0.displayName })
@@ -105,7 +110,8 @@ public final class ConfigureSheetController: NSObject {
         accuracyPopUp.action = #selector(accuracyChanged(_:))
         accuracyPopUp.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         grid.addRow(with: [
-            OptionsSheet.fieldLabel("Integrator"), accuracyPopUp, NSGridCell.emptyContentView,
+            OptionsSheet.fieldLabel("Integrator", width: column), accuracyPopUp,
+            NSGridCell.emptyContentView,
         ])
 
         for (index, spec) in Self.sliderSpecs.enumerated() {
@@ -115,7 +121,9 @@ public final class ConfigureSheetController: NSObject {
             control.tag = index
             let label = OptionsSheet.valueLabel()
             sliderControls.append((control, label))
-            grid.addRow(with: [OptionsSheet.fieldLabel(spec.title), control, label])
+            grid.addRow(with: [
+                OptionsSheet.fieldLabel(spec.title, width: column), control, label,
+            ])
         }
 
         sheet.add(grid, stretched: true)

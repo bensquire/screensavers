@@ -14,7 +14,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     private var tunnel: VortexMetalView!
     private var configController: VortexConfigureSheet!
     private var timer: Timer?
-    private var frameClock = FrameClock(nominalInterval: 1.0 / VortexRenderer.framesPerSecond)
+    private var frameClock = FrameClock(nominalInterval: FrameClock.frameInterval)
     private let store = VortexSettingsStore(
         defaults: SaverPreferences(moduleIdentifier: VortexSettingsStore.bundleIdentifier))
 
@@ -41,7 +41,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         frameClock.reset()
-        let interval = 1.0 / VortexRenderer.framesPerSecond
+        let interval = FrameClock.frameInterval
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.tunnel.advance(deltaTime: self.frameClock.tick())
@@ -130,7 +130,7 @@ func renderThumbnail() -> Bool {
 
     // Run the scene forward so the tunnel has drifted somewhere interesting
     // rather than sitting at its symmetric starting pose.
-    let step = 1.0 / VortexRenderer.framesPerSecond
+    let step = FrameClock.frameInterval
     var t = 0.0
     while t < settleSeconds {
         scene.update(deltaTime: step, layout: layout)
@@ -170,6 +170,14 @@ func downsample(_ image: CGImage, to size: CGSize) -> CGImage? {
     context.interpolationQuality = .high
     context.draw(image, in: CGRect(origin: .zero, size: size))
     return context.makeImage()
+}
+
+// No `--bench` here yet. Say so and stop, rather than falling through and
+// opening a preview window that never exits — `make bench` would hang on it.
+if CommandLine.arguments.contains("--bench") {
+    FileHandle.standardError.write(
+        Data("this saver has no --bench mode; see GargantuaApp or ThreeBodyApp\n".utf8))
+    exit(2)
 }
 
 if renderThumbnail() { exit(0) }

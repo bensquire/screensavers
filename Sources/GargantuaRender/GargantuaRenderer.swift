@@ -21,14 +21,6 @@ import SaverKit
 /// is driven rather than chosen — see `AdaptiveResolution`.
 public final class GargantuaRenderer {
 
-    /// Frames per second — `FrameClock`'s, which is the whole fleet's.
-    ///
-    /// It matters most here: every pixel of every frame integrates a geodesic,
-    /// so at 60 this was spending a whole M1 Pro to animate a camera that takes
-    /// seven minutes to go round once. The accumulation window is fixed in
-    /// seconds, so halving the rate does not change how far back it reaches.
-    public static var framesPerSecond: Double { FrameClock.framesPerSecond }
-
     /// Levels in the bloom pyramid.
     static let bloomLevels = 5
 

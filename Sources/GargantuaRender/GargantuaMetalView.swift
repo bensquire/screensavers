@@ -35,7 +35,7 @@ public final class GargantuaMetalView: MetalLayerView, SaverFrameCapturing {
     /// Beyond this the march stops being affordable at any render scale the
     /// controller is willing to pick — at 2560x1600 a full-scale frame already
     /// costs 50ms on an M1 Pro, and pixels scale that linearly.
-    public override var maximumDrawablePixels: Int { 3840 * 2160 }
+    public override var maximumDrawablePixels: Double { 3840 * 2160 }
 
     public override func drawableSizeChanged() {
         // Every target is about to be reallocated, so the frames accumulated in
@@ -47,7 +47,7 @@ public final class GargantuaMetalView: MetalLayerView, SaverFrameCapturing {
     public func captureSaverFrame() -> NSImage? {
         let size = drawableSize
         return renderer.renderToImage(
-            scene: scene, deltaTime: 1.0 / GargantuaRenderer.framesPerSecond,
+            scene: scene, deltaTime: FrameClock.frameInterval,
             width: Int(size.width), height: Int(size.height))?.asSaverFrame
     }
 

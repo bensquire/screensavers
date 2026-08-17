@@ -81,23 +81,19 @@ open class MetalLayerView: NSView {
     /// four times the pixels of a laptop panel, and for a saver whose cost is
     /// per-pixel that is the difference between comfortable and unusable.
     /// Override to put a ceiling on it.
-    open var maximumDrawablePixels: Int { .max }
+    open var maximumDrawablePixels: Double { .infinity }
 
     /// The drawable's size in device pixels, after the backing-scale and pixel
     /// caps.
     public var drawableSize: CGSize {
-        var width = max(1, (bounds.width * backingScale).rounded(.down))
-        var height = max(1, (bounds.height * backingScale).rounded(.down))
-        let limit = Double(maximumDrawablePixels)
-        let pixels = Double(width) * Double(height)
-        if pixels > limit {
-            // Scale both axes by the same factor, so the aspect ratio — and
-            // therefore the framing — is untouched.
-            let shrink = (limit / pixels).squareRoot()
-            width = max(1, (width * shrink).rounded(.down))
-            height = max(1, (height * shrink).rounded(.down))
-        }
-        return CGSize(width: width, height: height)
+        let width = bounds.width * backingScale
+        let height = bounds.height * backingScale
+        // Both axes by the same factor, so the aspect ratio — and therefore the
+        // framing — is untouched. Uncapped, this is 1 and costs a divide.
+        let shrink = min(1, (maximumDrawablePixels / Double(width * height)).squareRoot())
+        return CGSize(
+            width: max(1, (width * CGFloat(shrink)).rounded(.down)),
+            height: max(1, (height * CGFloat(shrink)).rounded(.down)))
     }
 
     private func updateDrawableSize() {

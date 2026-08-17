@@ -1,4 +1,5 @@
 import Metal
+import SaverKit
 import XCTest
 
 @testable import VortexCore
@@ -86,7 +87,7 @@ final class RenderTests: XCTestCase {
         let renderer = try VortexRenderer(
             device: device, library: library, particles: scene.particles)
 
-        let step = 1.0 / VortexRenderer.framesPerSecond
+        let step = FrameClock.frameInterval
         var t = 0.0
         while t < settleSeconds {
             scene.update(deltaTime: step, layout: layout)

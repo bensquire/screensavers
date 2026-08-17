@@ -33,11 +33,11 @@ final class SlidersVortexView: ScreenSaverView {
             Bundle(for: SlidersVortexView.self).bundleIdentifier
             ?? VortexSettingsStore.bundleIdentifier
         self.store = VortexSettingsStore(defaults: SaverPreferences(moduleIdentifier: identifier))
-        self.frameClock = FrameClock(nominalInterval: 1.0 / VortexRenderer.framesPerSecond)
+        self.frameClock = FrameClock(nominalInterval: FrameClock.frameInterval)
 
         super.init(frame: frame, isPreview: isPreview)
 
-        animationTimeInterval = 1.0 / VortexRenderer.framesPerSecond
+        animationTimeInterval = FrameClock.frameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
         rebuild(with: Self.settings(from: store, isPreview: isPreview))

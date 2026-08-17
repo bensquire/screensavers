@@ -3,7 +3,7 @@
 SAVERS := $(notdir $(wildcard savers/*))
 SAVER  ?= three-body
 
-.PHONY: build install verify release thumbnails test lint format clean \
+.PHONY: build install verify release thumbnails bench test lint format clean \
         all-build all-verify list
 
 list:
@@ -33,6 +33,16 @@ thumbnails:
 	swift build -c release --product $$APP; \
 	.build/release/$$APP --render savers/$(SAVER)/Resources/thumbnail.png    --width 90  --height 58  --at 40; \
 	.build/release/$$APP --render savers/$(SAVER)/Resources/thumbnail@2x.png --width 180 --height 116 --at 40
+
+# Times the renderer. Release-mode is not optional: the three-body numerics are
+# an order of magnitude slower unoptimised, so a debug build reports physics
+# costs that are simply wrong. Extra flags pass through, e.g.
+#   make bench SAVER=gargantua ARGS="--width 3840 --height 2160"
+bench:
+	@APP=$$(sed -n 's/^APP_PRODUCT="\(.*\)"$$/\1/p' savers/$(SAVER)/saver.conf); \
+	swift build -c release --product $$APP; \
+	.build/release/$$APP --bench $(ARGS)
+
 
 # Release-mode: the three-body tests are numerical — million-step integrations and
 # convergence-slope measurements — and unoptimised they take tens of minutes.

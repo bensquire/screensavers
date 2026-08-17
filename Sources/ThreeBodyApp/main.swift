@@ -188,13 +188,12 @@ func runBenchmark() -> Bool {
     let frames = value("--frames", 300)
     let size = CGSize(width: width, height: height)
 
-    func measure(_ label: String, _ configure: (inout SimulationSettings) -> Void) {
-        measureScenario(label, Scenarios.figureEight, configure)
-    }
+    let frameMs = FrameClock.frameInterval * 1000
 
-    func measureScenario(
-        _ label: String, _ scenario: Scenario,
-        _ configure: (inout SimulationSettings) -> Void
+    func measure(
+        _ label: String,
+        _ scenario: Scenario = Scenarios.figureEight,
+        _ configure: (inout SimulationSettings) -> Void = { _ in }
     ) {
         var settings = SimulationSettings.default
         configure(&settings)
@@ -238,20 +237,19 @@ func runBenchmark() -> Bool {
         drawTimes.sort()
         updateTimes.sort()
         guard !drawTimes.isEmpty else { return }
-        let budget = 1000.0 / FrameClock.framesPerSecond
         let draw = drawTimes[drawTimes.count / 2]
         let update = updateTimes[updateTimes.count / 2]
         let updateWorst = updateTimes[Int(Double(updateTimes.count) * 0.95)]
         print(
             String(
-                format: "  %-22s physics %6.2f ms (p95 %6.2f)   draw %5.2f ms   total %3.0f%%",
-                (label as NSString).utf8String!, update, updateWorst, draw,
-                (update + draw) / budget * 100))
+                format: "  %@ physics %6.2f ms (p95 %6.2f)   draw %5.2f ms   total %3.0f%%",
+                label.padding(toLength: 22, withPad: " ", startingAt: 0),
+                update, updateWorst, draw, (update + draw) / frameMs * 100))
     }
 
     print("output \(width)x\(height), \(frames) frames, fixed seed\n")
     print("--- figure-eight (a gentle, closed orbit) ---")
-    measure("everything on") { _ in }
+    measure("everything on")
     measure("no glow") { $0.showGlow = false }
     measure("no HUD") { $0.showHUD = false }
     measure("no stars") { $0.showStars = false }
@@ -268,7 +266,7 @@ func runBenchmark() -> Bool {
     // makes an adaptive integrator take tiny steps.
     print("\n--- Pythagorean/Burrau (chaotic, close encounters) ---")
     for accuracy in Accuracy.allCases {
-        measureScenario(
+        measure(
             "\(accuracy.rawValue) (\(accuracy.order))", Scenarios.pythagorean
         ) { $0.accuracy = accuracy }
     }

@@ -1,5 +1,6 @@
 import Foundation
 import GargantuaCore
+import SaverKit
 
 /// Drives the render scale to hold a frame budget.
 ///
@@ -23,18 +24,23 @@ public struct AdaptiveResolution {
     /// Set false to pin the scale where it is.
     public var isEnabled = true
 
-    /// Share of each frame the GPU is allowed to spend on the march.
+    /// Seconds per frame the GPU is allowed — about two thirds of one, not all
+    /// of it.
     ///
-    /// Not 1.0, deliberately. The controller settles wherever cost sits between
-    /// 0.62 and 1.15 of its budget, so a budget of one whole frame interval
-    /// means it settles at very nearly a whole frame interval — measured at 16.5
-    /// ms of a 16.7 ms frame on an M1 Pro, which is a screensaver holding the
-    /// GPU at full tilt indefinitely. Leaving a third of the frame idle costs
+    /// The controller settles wherever cost sits between 0.62 and 1.15 of its
+    /// budget (see `note`), so a budget of a whole frame interval means it
+    /// settles at very nearly a whole frame interval: a screensaver holding the
+    /// GPU at full tilt indefinitely. Leaving a third of each frame idle costs
     /// resolution and buys back the fans.
-    public static let utilisation = 0.65
+    ///
+    /// Measured on an M1 Pro at 2560x1600 this settles at 16.4 ms of a 33.3 ms
+    /// frame — a 49% duty cycle, at render scale 0.55. `GargantuaApp --bench`
+    /// reprints that, so retuning the fraction can be checked rather than
+    /// argued about.
+    public static let defaultBudget = 0.65 * FrameClock.frameInterval
 
-    /// Seconds per frame the GPU is allowed.
-    public var budget: Double = Self.utilisation / GargantuaRenderer.framesPerSecond
+    /// Seconds per frame the GPU is allowed. Only the tests set this.
+    public var budget: Double = defaultBudget
 
     /// Smoothed GPU cost of a frame, in seconds.
     public private(set) var smoothedCost: Double = 0

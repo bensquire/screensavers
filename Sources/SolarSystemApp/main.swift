@@ -231,6 +231,14 @@ if let path = options.renderPath {
     exit(0)
 }
 
+// No `--bench` here yet. Say so and stop, rather than falling through and
+// opening a preview window that never exits — `make bench` would hang on it.
+if CommandLine.arguments.contains("--bench") {
+    FileHandle.standardError.write(
+        Data("this saver has no --bench mode; see GargantuaApp or ThreeBodyApp\n".utf8))
+    exit(2)
+}
+
 let app = NSApplication.shared
 let host = AppHost(renderer: renderer, options: options)
 app.delegate = host

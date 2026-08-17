@@ -87,6 +87,22 @@ final class PackagingTests: XCTestCase {
         }
     }
 
+    /// The column has to fit the longest title, and the two sheets that build
+    /// their rows differently must agree about that — the first version of this
+    /// fix only reached the sheets going through SliderGrid.
+    @MainActor
+    func testLabelColumnFitsItsTitles() {
+        XCTAssertEqual(OptionsSheet.labelColumnWidth(fitting: ["a"]), OptionsSheet.minimumLabelWidth)
+        let wide = OptionsSheet.labelColumnWidth(fitting: ["Doppler beaming"])
+        XCTAssertGreaterThan(wide, OptionsSheet.minimumLabelWidth)
+        XCTAssertGreaterThanOrEqual(
+            wide, OptionsSheet.fieldLabel("Doppler beaming", width: nil).intrinsicContentSize.width)
+        // Order must not matter.
+        XCTAssertEqual(
+            OptionsSheet.labelColumnWidth(fitting: ["a", "Doppler beaming"]),
+            OptionsSheet.labelColumnWidth(fitting: ["Doppler beaming", "a"]))
+    }
+
     func testTheSaverIsBuiltFromTheModulesItNeeds() throws {
         let conf = try saverConf()
         let modules = try XCTUnwrap(conf["MODULES"]).split(separator: " ").map(String.init)

@@ -51,6 +51,7 @@ which is what a missing or stale `.metallib` used to look like.
 make list                      # which savers exist
 make build   SAVER=three-body  # build/<saver>/<Name>.saver, ad-hoc signed
 make verify  SAVER=three-body  # load the built bundle for real and draw a frame
+make bench   SAVER=three-body  # time the renderer (release build, fixed seed)
 make install SAVER=three-body  # build and install to ~/Library/Screen Savers
 make test                      # every saver's tests
 make lint

@@ -128,10 +128,22 @@ public final class OptionsSheet {
         return field
     }
 
+    /// Width a label column needs to show all of `titles` without truncating.
+    ///
+    /// Every sheet has to size its column this way rather than guessing: a
+    /// fixed 92pt silently clipped "Doppler beaming" and ran it under the
+    /// slider beside it.
+    public static func labelColumnWidth(fitting titles: [String]) -> CGFloat {
+        let widths = titles.map { fieldLabel($0, width: nil).intrinsicContentSize.width }
+        return max(minimumLabelWidth, widths.max() ?? 0).rounded(.up)
+    }
+
     /// The left column of a grid row. A fixed width is what makes every row line
-    /// up — but pass `nil` to leave it unconstrained, for a caller that measures
-    /// its own titles and sets one width across all of them.
-    public static func fieldLabel(_ text: String, width: CGFloat? = 92) -> NSTextField {
+    /// up — pass `nil` to leave it unconstrained, which is how
+    /// `labelColumnWidth(fitting:)` measures one.
+    public static func fieldLabel(_ text: String, width: CGFloat? = minimumLabelWidth)
+        -> NSTextField
+    {
         let field = NSTextField(labelWithString: text)
         field.alignment = .right
         if let width {
@@ -241,13 +253,7 @@ public final class SliderGrid<Settings>: NSObject {
 
     /// Adds one row per spec to `grid`, reading initial values from `settings`.
     public func install(in grid: NSGridView, settings: Settings) {
-        // Size the label column to the longest title rather than to a constant:
-        // a fixed 92pt silently truncated "Doppler beaming" and ran it under the
-        // slider beside it.
-        let titles = specs.map { OptionsSheet.fieldLabel($0.title, width: nil) }
-        let column = max(
-            OptionsSheet.minimumLabelWidth,
-            titles.map { $0.intrinsicContentSize.width }.max() ?? 0)
+        let column = OptionsSheet.labelColumnWidth(fitting: specs.map(\.title))
 
         for (index, spec) in specs.enumerated() {
             let slider = OptionsSheet.slider(
@@ -256,9 +262,9 @@ public final class SliderGrid<Settings>: NSObject {
             slider.tag = index
             let label = OptionsSheet.valueLabel()
             labels.append(label)
-            let title = titles[index]
-            title.widthAnchor.constraint(equalToConstant: column.rounded(.up)).isActive = true
-            grid.addRow(with: [title, slider, label])
+            grid.addRow(with: [
+                OptionsSheet.fieldLabel(spec.title, width: column), slider, label,
+            ])
         }
         refresh(settings)
     }

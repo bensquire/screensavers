@@ -1,4 +1,5 @@
 import Metal
+import SaverKit
 import XCTest
 
 @testable import GargantuaCore
@@ -106,7 +107,7 @@ final class RenderTests: XCTestCase {
         let renderer = try GargantuaRenderer(device: device, library: library)
         renderer.fixRenderScale(at: 1.0)
 
-        let step = 1.0 / GargantuaRenderer.framesPerSecond
+        let step = FrameClock.frameInterval
         var t = 0.0
         while t < max(0, settleSeconds - 0.25) {
             scene.update(deltaTime: step)
