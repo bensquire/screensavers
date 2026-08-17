@@ -232,18 +232,25 @@ public enum Scenarios {
         let totalMass = m1 + m2
         let r = a * (1 + e)
         let speed = (gravitationalConstant * totalMass * (2.0 / r - 1.0 / a)).squareRoot()
-        // Bound to named Doubles rather than written inline: the inline form
-        // type-checked under Xcode 26.6 and failed under 26.3 with "cannot
-        // convert Vec2 to Double", so the expression was relying on inference
-        // that is not stable across toolchains. It also halves the transcendentals.
+        // Every scalar that multiplies a Vec2 is bound to a named Double first.
+        // `Vec2 * (a * b)` type-checked under Xcode 26.6 and failed under 26.3
+        // with "cannot convert Vec2 to Double" — with two `*` overloads
+        // (Vec2 * Double and Double * Vec2), an unresolved expression on the
+        // right lets the solver try the wrong one and blame the left operand.
+        // Naming the scalar removes the choice. Binding sin/cos also halves the
+        // transcendentals, which were each being evaluated twice.
         let cosPhase: Double = cos(phase)
         let sinPhase: Double = sin(phase)
+        let speedAlongOrbit: Double = speed * sense
+        let share1: Double = m2 / totalMass
+        let share2: Double = -m1 / totalMass
+
         let sep = Vec2(cosPhase, sinPhase) * r
-        let vel = Vec2(-sinPhase, cosPhase) * (speed * sense)
+        let vel = Vec2(-sinPhase, cosPhase) * speedAlongOrbit
         // Split the relative vector about the centre of mass.
         return (
-            r1: sep * (m2 / totalMass), v1: vel * (m2 / totalMass),
-            r2: sep * (-m1 / totalMass), v2: vel * (-m1 / totalMass)
+            r1: sep * share1, v1: vel * share1,
+            r2: sep * share2, v2: vel * share2
         )
     }
 

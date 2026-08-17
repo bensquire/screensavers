@@ -52,7 +52,10 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
     /// whole verify step died. Rendering into a texture we allocate ourselves is
     /// the path the Metal savers already use there without trouble.
     public func captureSaverFrame() -> NSImage? {
-        guard let device = MTLCreateSystemDefaultDevice(), bounds.width > 1, bounds.height > 1
+        // Declining is the only option on a virtualised GPU: SceneKit asserts
+        // there rather than failing, which takes the whole process with it.
+        guard let device = MTLCreateSystemDefaultDevice(), !device.isParavirtual,
+            bounds.width > 1, bounds.height > 1
         else { return nil }
 
         let width = Int(bounds.width), height = Int(bounds.height)

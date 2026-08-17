@@ -1,4 +1,5 @@
 import AppKit
+import Metal
 
 /// A view that can hand back what it just drew.
 ///
@@ -18,6 +19,21 @@ import AppKit
 
     /// The most recently drawn frame, rendered afresh if that is what it takes.
     @objc func captureSaverFrame() -> NSImage?
+}
+
+extension MTLDevice {
+
+    /// True on a virtualised GPU, which is what CI runs on.
+    ///
+    /// SceneKit cannot render there at all: both `SCNView.snapshot()` and an
+    /// offscreen `SCNRenderer` trip an assertion inside `AppleParavirtTexture`,
+    /// and an assertion aborts the process rather than returning an error, so
+    /// there is nothing to catch. Metal rendering into a texture allocated
+    /// directly is fine on the same device — the two Metal savers capture there
+    /// without trouble — so this is not a blanket "no GPU" check.
+    public var isParavirtual: Bool {
+        name.localizedCaseInsensitiveContains("paravirtual")
+    }
 }
 
 extension NSView {

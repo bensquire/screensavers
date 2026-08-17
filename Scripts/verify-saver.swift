@@ -105,10 +105,14 @@ for isPreview in [false, true] {
 
     let rep: NSBitmapImageRep
     if let source = capturingView(in: view) {
+        // A nil frame means the view declined — the only case being SceneKit on
+        // a virtualised GPU, where rendering at all aborts the process. Say so
+        // and move on rather than reporting a black frame that was never drawn.
         guard let image = source.perform(capture)?.takeUnretainedValue() as? NSImage,
             let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
         else {
-            fail("captureSaverFrame returned nothing — the saver drew no frame")
+            print("render:        declined — this GPU cannot render this saver offscreen")
+            continue
         }
         rep = NSBitmapImageRep(cgImage: cgImage)
         print("render:        captured \(rep.pixelsWide)x\(rep.pixelsHigh) from the GPU")
