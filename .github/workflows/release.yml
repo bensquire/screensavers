@@ -33,6 +33,14 @@ jobs:
     name: Build, sign, publish
     runs-on: macos-15
     timeout-minutes: 40
+    # On the job, not on the build step. `make verify` depends on `build`, so a
+    # later step that re-ran it with this unset rebuilt the bundle and re-signed
+    # it ad-hoc — discarding the Developer ID signature after it had already been
+    # checked. Apple rejected the result with "not signed with a valid Developer
+    # ID certificate" and "does not include a secure timestamp". Setting it here
+    # means every build in the job signs the same way.
+    env:
+      CODESIGN_IDENTITY: "Developer ID Application"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,8 +148,10 @@ jobs:
       - name: Build signed
         env:
           VERSION: ${{ steps.what.outputs.numeric }}
-          CODESIGN_IDENTITY: "Developer ID Application"
         run: make build SAVER=${{ steps.what.outputs.saver }}
+
+      - name: Load, animate and draw
+        run: make verify SAVER=${{ steps.what.outputs.saver }}
 
       - name: Verify bundle before notarizing
         run: |
@@ -157,12 +167,13 @@ jobs:
           # Notarisation rejects anything without the hardened runtime.
           codesign -d --verbose=2 "$SAVER" 2>&1 | grep -q "flags=.*runtime" \
             || { echo "::error::bundle is not signed with the hardened runtime"; exit 1; }
+          # Apple rejects a signature without one, and nothing else here would
+          # notice: an ad-hoc re-sign looks fine to --verify.
+          codesign -dvv "$SAVER" 2>&1 | grep -q "Timestamp=" \
+            || { echo "::error::signature has no secure timestamp"; exit 1; }
           PLIST_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" \
             "$SAVER/Contents/Info.plist")
           test "$PLIST_VERSION" = "${{ steps.what.outputs.numeric }}"
-
-      - name: Load, animate and draw
-        run: make verify SAVER=${{ steps.what.outputs.saver }}
 
       - name: Notarize and staple
         env:
