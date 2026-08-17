@@ -177,9 +177,31 @@ jobs:
           # notarytool takes an archive, so submit a zip of the bundle, then staple the
           # ticket onto the bundle itself.
           ditto -c -k --keepParent "$SAVER" "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
+
+          # --wait exits non-zero on a rejection but prints only "Invalid",
+          # which says nothing about what Apple objected to. Capture the
+          # submission id so the log can be fetched — without it every failure
+          # here is a guessing game.
+          set +e
+          SUBMIT=$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --key "$KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
-            --issuer "$APPLE_API_ISSUER_ID" --wait
+            --issuer "$APPLE_API_ISSUER_ID" --wait --output-format json)
+          SUBMIT_STATUS=$?
+          set -e
+          echo "$SUBMIT"
+
+          ID=$(echo "$SUBMIT" | jq -r '.id // empty')
+          STATUS=$(echo "$SUBMIT" | jq -r '.status // "unknown"')
+          if [ "$STATUS" != "Accepted" ] || [ $SUBMIT_STATUS -ne 0 ]; then
+            echo "::error::notarization returned $STATUS — Apple's reasons follow"
+            if [ -n "$ID" ]; then
+              xcrun notarytool log "$ID" \
+                --key "$KEY_PATH" --key-id "$APPLE_API_KEY_ID" \
+                --issuer "$APPLE_API_ISSUER_ID" || true
+            fi
+            exit 1
+          fi
+
           xcrun stapler staple "$SAVER"
           xcrun stapler validate "$SAVER"
 
