@@ -2,23 +2,37 @@
 
 # Screensavers
 
-**Native macOS screensavers, sharing one build, signing and release pipeline.**
+**Four native macOS screensavers, sharing one build, signing and release
+pipeline.**
 
 [![CI](https://img.shields.io/github/actions/workflow/status/bensquire/screensavers/ci.yml?branch=main&label=ci&logo=github&cacheSeconds=300)](https://github.com/bensquire/screensavers/actions/workflows/ci.yml)
 [![Platform](https://img.shields.io/badge/platform-macOS%2014%2B-007aff?logo=apple)](https://www.apple.com/macos/)
 [![License](https://img.shields.io/github/license/bensquire/screensavers?label=license&cacheSeconds=300)](LICENSE)
 
+<br/>
+
+<img src="docs/hero.png" width="900" alt="Four screensavers in a grid: a spinning black hole with its accretion disk bent over and under the shadow; a tunnel of blue light streaks rushing outward; the solar system trailing looping orbits as it travels through the galaxy; and three bodies tracing a figure-eight orbit"/>
+
 </div>
 
 |                                              |               |                                                                                                     |
 |----------------------------------------------|---------------|-----------------------------------------------------------------------------------------------------|
+| **[Gargantua](docs/gargantua.md)**           | Metal         | A spinning black hole, ray-traced along real null geodesics in Kerr spacetime.                      |
+| **[Sliders Vortex](docs/vortex.md)**         | Metal         | An endless tunnel of drifting light, with the occasional discharge down the wall.                   |
 | **[Solar System](docs/solar-system.md)**     | SceneKit      | The solar system travelling through the galaxy, every planet in its real position for today's date. |
 | **[Three-Body Problem](docs/three-body.md)** | Core Graphics | The gravitational three-body problem integrated in real time, in solar masses, AU and years.        |
-| **[Sliders Vortex](docs/vortex.md)**         | Metal         | An endless tunnel of drifting light, with the occasional discharge down the wall.                   |
-| **[Gargantua](docs/gargantua.md)**           | Metal         | A spinning black hole, ray-traced along real null geodesics in Kerr spacetime.                      |
 
-Each is downloaded and installed separately — see its page, or the
-[releases](https://github.com/bensquire/screensavers/releases).
+## Install
+
+1. Download the one you want from
+   [Releases](https://github.com/bensquire/screensavers/releases/latest)
+2. Unzip, and double-click the `.saver` — or move it to
+   `~/Library/Screen Savers/`
+3. Pick it in System Settings &rarr; Screen Saver
+
+Each is released separately. All are signed with a Developer ID and notarized
+by Apple, so they install without a Gatekeeper warning. Universal — Apple
+Silicon and Intel, macOS 14+.
 
 > **If the Options button does nothing**, quit System Settings entirely
 > (&#8984;Q) and reopen it with the screensaver you want to configure selected
@@ -26,90 +40,17 @@ Each is downloaded and installed separately — see its page, or the
 > when the pane appeared and never rebinds it — nothing a `.saver` bundle can
 > influence.
 
-## Why one repository
+Each screensaver's own page covers what it draws, what its options do, and how
+it works.
 
-Not for shared rendering: they draw with SceneKit, Core Graphics and Metal
-respectively, and have almost no drawing code in common. What they share is
-everything around it — compiling a loadable `MH_BUNDLE`, signing it with a
-Developer ID, notarising, stapling, packaging, and verifying that the result is
-something `ScreenSaverEngine` can actually load. That machinery is fiddly, easy
-to get subtly wrong, and was previously duplicated per project and already
-drifting.
-
-A little more turned out to be genuinely common than expected. It is split in
-two so the "Core is Foundation-only" rule below stays true rather than merely
-intended: `SaverCore` holds what a physics module may use — a seedable PRNG, a
-NaN-safe clamp — and `SaverKit` holds the rest, which links AppKit and Metal.
-That is preferences which survive being written from a sandboxed host, the
-options-sheet layout (got wrong once by building it from intrinsic widths, when
-System Settings presents the sheet wider than that), a `CAMetalLayer` view
-base, shader loading, and the frame-capture hook `make verify` uses.
-
-Every saver is verified the same way: the built bundle is loaded for real, both
-view instances are animated, and the frame they actually drew is asserted on. A
-saver drawing on the GPU hands its frame back through `SaverFrameCapturing`,
-because its backing store is empty and `cacheDisplay` would capture nothing —
-which is what a missing or stale `.metallib` used to look like.
-
-## Working on them
+## Build from source
 
 ```sh
 make list                      # which savers exist
 make build   SAVER=three-body  # build/<saver>/<Name>.saver, ad-hoc signed
-make verify  SAVER=three-body  # load the built bundle for real and draw a frame
-make bench   SAVER=three-body  # time the renderer (release build, fixed seed)
 make install SAVER=three-body  # build and install to ~/Library/Screen Savers
-make test                      # every saver's tests
-make lint
-make all-build                 # every saver
 ```
 
-Adding a screensaver means adding `savers/<name>/` — a `saver.conf` declaring
-its modules, frameworks and bundle name, an `Info.plist`, and the two System
-Settings tiles. Nothing in `Scripts/` or the `Makefile` needs editing, and CI
-fails if a new saver is missing from its matrix.
-
-## Releasing
-
-Each screensaver versions independently, so a tag names which one:
-
-```sh
-git tag three-body-v1.0.0
-git push origin refs/tags/three-body-v1.0.0
-```
-
-Two things about that, both of which fail silently:
-
-- **Push tags one at a time**, and push the ref explicitly rather than using
-  `--tags`. GitHub drops the `push` event when several arrive together: four
-  tags pushed at once produced no release runs at all, and re-pushing a single
-  tag on its own started one immediately.
-- **Tag after the workflow you need is on `main`.** A tag build runs
-  `release.yml` *as it was at the tagged commit*, not as it is now — so a tag
-  created before a pipeline fix will keep failing in the way that fix repaired.
-  Move the tag (`git tag -d`, delete the remote ref, re-tag, push) and it picks
-  up the current workflow.
-
-That runs `.github/workflows/release.yml`, which signs with a Developer ID,
-notarises, staples the ticket, and publishes a GitHub Release containing just
-that saver. It needs five repository secrets —
-`SIGNING_CERTIFICATE_P12_BASE64`, `SIGNING_CERTIFICATE_PASSWORD`,
-`APPLE_API_KEY_BASE64`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`.
-
-## Layout
-
-```
-Sources/SaverCore/      Foundation-only shared code, usable from a Core
-Sources/SaverKit/       the rest of the shared hosting code (AppKit, Metal)
-Sources/<Saver>Core/    physics and model — Foundation only, testable headlessly
-Sources/<Saver>Render/  drawing
-Sources/<Saver>Saver/   the ScreenSaverView subclass
-Sources/<Saver>App/     standalone window, and the thumbnail renderer
-savers/<name>/          saver.conf, Info.plist, System Settings tiles
-Scripts/                build, sign, install, package, verify — one copy for all
-```
-
-SwiftPM is here for `swift test`, `swift format` and type-checking. It cannot
-emit the `MH_BUNDLE` that `ScreenSaverEngine` `dlopen`s, so
-`Scripts/build-saver.sh` drives `swiftc` directly: compile each module in
-dependency order, then link with `-bundle`.
+[NOTES.md](NOTES.md) covers the rest: what the four share and why they live in
+one repository, the full set of `make` targets, how a release is cut, and where
+everything sits.

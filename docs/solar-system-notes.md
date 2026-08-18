@@ -1,8 +1,8 @@
 # Notes
 
-Working notes for [Solar System](README.md): what is genuinely computed, what
-is deliberately distorted and why, and the traps found by measuring rather than
-guessing. Kept out of the README so that stays a page about installing a
+Working notes for [Solar System](solar-system.md): what is genuinely computed,
+what is deliberately distorted and why, and the traps found by measuring rather
+than guessing. Kept off that page so it stays about installing and running the
 screensaver.
 
 ---
