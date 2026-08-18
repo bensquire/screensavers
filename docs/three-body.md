@@ -35,6 +35,18 @@ System Settings → Screen Saver.
 The release is signed with a Developer ID and notarized by Apple, so it installs
 without a Gatekeeper warning. Universal (Apple Silicon + Intel), macOS 14+.
 
+### If **Options…** does nothing
+
+This is a System Settings bug, not a fault in the screensaver. The Options
+button stays bound to whichever screensaver was loaded when the pane first
+appeared; picking a different one in the grid does not rebind it. So Options
+works for the first screensaver you select after opening System Settings, and
+silently does nothing for every one you select after that.
+
+Quit System Settings completely (&#8984;Q &mdash; closing the window is not
+enough), reopen it, and select this screensaver first. Options then opens
+normally.
+
 ## Scenes
 
 The options sheet offers three choices:

@@ -20,6 +20,12 @@
 Each is downloaded and installed separately — see its page, or the
 [releases](https://github.com/bensquire/screensavers/releases).
 
+> **If the Options button does nothing**, quit System Settings entirely
+> (&#8984;Q) and reopen it with the screensaver you want to configure selected
+> first. System Settings binds that button to whichever screensaver was loaded
+> when the pane appeared and never rebinds it — nothing a `.saver` bundle can
+> influence.
+
 ## Why one repository
 
 Not for shared rendering: they draw with SceneKit, Core Graphics and Metal

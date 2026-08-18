@@ -27,6 +27,18 @@ Signed with a Developer ID and notarized, so it installs without a Gatekeeper
 warning. Universal, macOS 14+. Needs a Metal-capable GPU, which every Mac that
 runs macOS 14 has.
 
+### If **Options…** does nothing
+
+This is a System Settings bug, not a fault in the screensaver. The Options
+button stays bound to whichever screensaver was loaded when the pane first
+appeared; picking a different one in the grid does not rebind it. So Options
+works for the first screensaver you select after opening System Settings, and
+silently does nothing for every one you select after that.
+
+Quit System Settings completely (&#8984;Q &mdash; closing the window is not
+enough), reopen it, and select this screensaver first. Options then opens
+normally.
+
 ## What is actually being computed
 
 Nothing in the picture is drawn. Every pixel fires a ray backwards from the
