@@ -55,16 +55,24 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
         // Declining is the only option on a virtualised GPU: SceneKit asserts
         // there rather than failing, which takes the whole process with it.
         guard let device = MTLCreateSystemDefaultDevice(), !device.isParavirtual,
+            let queue = device.makeCommandQueue(),
             bounds.width > 1, bounds.height > 1
         else { return nil }
 
-        let width = Int(bounds.width), height = Int(bounds.height)
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
-        descriptor.usage = [.renderTarget, .shaderRead]
-        descriptor.storageMode = .managed
-        guard let target = device.makeTexture(descriptor: descriptor),
-            let queue = device.makeCommandQueue(),
+        let renderer = SCNRenderer(device: device, options: nil)
+        renderer.scene = scene
+        renderer.pointOfView = pointOfView
+        return Self.renderOffscreen(renderer, size: bounds.size, queue: queue)?.asSaverFrame
+    }
+
+    /// Draws `renderer`'s scene into a texture of its own and reads it back — the
+    /// path `captureSaverFrame` takes, shared so the tests take it too.
+    static func renderOffscreen(
+        _ renderer: SCNRenderer, size: CGSize, queue: MTLCommandQueue
+    ) -> CGImage? {
+        guard
+            let target = queue.device.makeReadableTarget(
+                width: Int(size.width), height: Int(size.height)),
             let commandBuffer = queue.makeCommandBuffer()
         else { return nil }
 
@@ -73,19 +81,12 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         pass.colorAttachments[0].storeAction = .store
-
-        let renderer = SCNRenderer(device: device, options: nil)
-        renderer.scene = scene
-        renderer.pointOfView = pointOfView
         renderer.render(
-            atTime: 0,
-            viewport: CGRect(x: 0, y: 0, width: bounds.width, height: bounds.height),
-            commandBuffer: commandBuffer,
-            passDescriptor: pass)
+            atTime: 0, viewport: CGRect(origin: .zero, size: size),
+            commandBuffer: commandBuffer, passDescriptor: pass)
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
-
-        return target.readBack(using: queue)?.asSaverFrame
+        return target.readBack(using: queue)
     }
 
     private let solarSystem: SolarSystemRenderer

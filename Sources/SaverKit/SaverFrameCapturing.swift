@@ -54,4 +54,20 @@ extension CGImage {
     public var asSaverFrame: NSImage {
         NSImage(cgImage: self, size: NSSize(width: width, height: height))
     }
+
+    /// The pixels as BGRA bytes, row after row, for asserting on what was drawn.
+    public var bgraBytes: [UInt8] {
+        let bytesPerRow = width * 4
+        var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
+        pixels.withUnsafeMutableBytes { buffer in
+            CGContext(
+                data: buffer.baseAddress, width: width, height: height,
+                bitsPerComponent: 8, bytesPerRow: bytesPerRow,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
+                    | CGBitmapInfo.byteOrder32Little.rawValue
+            )?.draw(self, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        return pixels
+    }
 }

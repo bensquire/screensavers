@@ -102,25 +102,7 @@ final class RenderTests: XCTestCase {
         guard let image = renderer.renderToImage(scene: scene, width: width, height: height) else {
             throw XCTSkip("the GPU did not return a frame")
         }
-        return (image, RenderTests.samples(image))
-    }
-
-    /// The rendered pixels as BGRA bytes.
-    private static func samples(_ image: CGImage) -> [UInt8] {
-        let bytesPerRow = image.width * 4
-        var pixels = [UInt8](repeating: 0, count: bytesPerRow * image.height)
-        pixels.withUnsafeMutableBytes { buffer in
-            guard
-                let context = CGContext(
-                    data: buffer.baseAddress, width: image.width, height: image.height,
-                    bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                    space: CGColorSpaceCreateDeviceRGB(),
-                    bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue
-                        | CGBitmapInfo.byteOrder32Little.rawValue)
-            else { return }
-            context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        }
-        return pixels
+        return (image, image.bgraBytes)
     }
 
     /// How many pixels differ between two frames by more than `threshold` in any

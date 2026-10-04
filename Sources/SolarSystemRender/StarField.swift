@@ -1,8 +1,6 @@
 import Foundation
 import SaverKit
 import SceneKit
-import SolarSystemCore
-import simd
 
 /// A star field that scrolls past as the Sun travels, so the scene reads as motion.
 ///
@@ -31,23 +29,17 @@ final class StarField {
 
     let node: SCNNode
     /// Edge of the cube along the drift axis, which is the period stars wrap with.
-    private let length: Double
+    let length: Double
     private let parallax: Double
     private let material: SCNMaterial
 
-    /// Fraction of each half of the cube, at either end, over which a star fades
-    /// out before it wraps and back in after.
-    private static let fadeFraction = 0.2
+    private static let count = 15_000
+    private static let seed: UInt64 = 0x5EED_5A1A_D000_1234
 
     /// `sceneExtent` sizes the field. A fixed size works only for one scale: at true
     /// scale the scene is ~130× larger and the camera would end up outside the field,
     /// which renders it as a visible cube of dots rather than a sky.
-    init(
-        count: Int = 15_000,
-        sceneExtent: Double,
-        parallax: Double,
-        seed: UInt64 = 0x5EED_5A1A_D000_1234
-    ) {
+    init(sceneExtent: Double, parallax: Double) {
         // As deep as it is wide, so looking along the drift axis shows no more stars
         // than looking across it — the clumping an elongated field produced.
         let length = sceneExtent * 30
@@ -56,26 +48,26 @@ final class StarField {
 
         // Generated in the galactic frame, whose +y is the Sun's direction of travel
         // (`GalacticFrame.solarApexDirection`) — the axis the stars stream along.
-        var rng = SplitMix64(seed: seed)
+        var rng = SplitMix64(seed: Self.seed)
         var vertices = [Float]()
-        vertices.reserveCapacity(count * 3)
+        vertices.reserveCapacity(Self.count * 3)
         var colors = [Float]()
-        colors.reserveCapacity(count * 4)
-        for _ in 0..<count {
+        colors.reserveCapacity(Self.count * 4)
+        for _ in 0..<Self.count {
             vertices.append(Float((rng.nextDouble() - 0.5) * length))
             vertices.append(Float((rng.nextDouble() - 0.5) * length))
             vertices.append(Float((rng.nextDouble() - 0.5) * length))
             // Power-law brightness: mostly faint, a few bright.
             let b = pow(rng.nextDouble(), 2.6) * 0.78 + 0.10
             let w = rng.nextDouble()
-            colors.append(Float(b * (0.85 + 0.25 * w)))
-            colors.append(Float(b * 0.92))
-            colors.append(Float(b * (1.10 - 0.25 * w)))
-            colors.append(1.0)
+            colors += [Float(b * (0.85 + 0.25 * w)), Float(b * 0.92), Float(b * (1.10 - 0.25 * w)), 1]
         }
 
-        let element = Geometry.element(
-            (0..<count).map { UInt32($0) }, primitiveType: .point, primitiveCount: count)
+        // No index buffer: the points are drawn in vertex order, which SceneKit does
+        // for itself when it is given none.
+        let element = SCNGeometryElement(
+            data: nil, primitiveType: .point, primitiveCount: Self.count,
+            bytesPerIndex: MemoryLayout<UInt32>.stride)
         // Screen-space radii are in pixels, so these need to be generous or the field
         // renders as invisible sub-pixel specks on a Retina panel.
         element.pointSize = 3.0
@@ -87,7 +79,6 @@ final class StarField {
         material = Geometry.unlitMaterial(blend: .alpha, doubleSided: false)
         material.shaderModifiers = [.geometry: Self.wrap]
         material.setValue(Float(length), forKey: "starPeriod")
-        material.setValue(Float(Self.fadeFraction), forKey: "starFade")
         material.setValue(Float(0), forKey: "starScroll")
 
         let geometry = SCNGeometry(
@@ -99,10 +90,10 @@ final class StarField {
     }
 
     /// Slides every star back along the drift axis by its scroll offset, wrapped into
-    /// the cube, and fades it near the faces it wraps between.
+    /// the cube, and fades it over the last fifth of the way to either face it wraps
+    /// between, so it goes out before it wraps and comes back in after.
     private static let wrap = """
         uniform float starPeriod;
-        uniform float starFade;
         uniform float starScroll;
 
         #pragma body
@@ -110,7 +101,7 @@ final class StarField {
         y -= starPeriod * floor(y / starPeriod + 0.5);
         _geometry.position.y = y;
         float edge = 0.5 * starPeriod;
-        _geometry.color.rgb *= 1.0 - smoothstep(edge * (1.0 - starFade), edge, abs(y));
+        _geometry.color.rgb *= 1.0 - smoothstep(0.8 * edge, edge, abs(y));
         """
 
     /// `driftDistance` is how far the Sun has travelled along its galactic orbit, in

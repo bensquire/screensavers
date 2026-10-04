@@ -71,15 +71,9 @@ Sun covers ~3,400 AU while the nearest star sits 268,000 AU away, under a
 degree. So the star field is scrolled at `--star-parallax` (default 16×) purely
 as a visual cue. Set it to 0 for no star motion.
 
-The stars stream through a cube around the Sun and wrap one at a time, in the
-vertex shader, fading out just before the face they leave by and back in after
-the one they re-enter through — so the sky never resets. It used to be three
-copies of one slab moved as a whole and snapped back a slab length every couple
-of minutes, which inside the field was seamless but at its far end popped a
-whole slab of stars in and out at once. `StarFieldTests` steps across the
-period looking for that jump, and fails on the old field exactly where it
-snapped. The CPU's only per-frame work is one shader uniform, reduced modulo the
-period in double precision first, so it stays exact however long the saver runs.
+The stars wrap one at a time in the vertex shader, fading at the faces of the
+field, so the sky never resets — see `StarField` for how, and for the slab that
+used to snap back every couple of minutes.
 
 Run `swift run ssverify` to print the real numbers, including the full helix
 geometry table. Pass `--true-scale` to the app to see what the honest version
