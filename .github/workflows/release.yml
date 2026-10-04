@@ -273,7 +273,13 @@ jobs:
           # The resolved tag, not GITHUB_REF_NAME: on a workflow_dispatch that is
           # the branch, so the first successful release was published as "main"
           # and created a tag of that name shadowing the branch.
+          #
+          # --target pins a tag gh has to create — any workflow_dispatch run — to
+          # the commit that was built. Without it gh tags the default branch's
+          # head, which is a different commit whenever the run came from another
+          # branch or main moved on during the job. An existing tag is unaffected.
           gh release create "${{ steps.what.outputs.tag }}" \
+            --target "${{ github.sha }}" \
             "dist/${{ steps.what.outputs.zip_prefix }}-${{ steps.what.outputs.version }}.zip" \
             --title "${{ steps.what.outputs.bundle_name }} ${{ steps.what.outputs.version }}" \
             --notes-file release_notes.md \

@@ -25,8 +25,15 @@ final class SlidersVortexView: ScreenSaverView {
 
     private lazy var configController = VortexConfigureSheet(store: store) {
         [weak self] settings in
-        self?.rebuild(with: settings)
+        guard let self else { return }
+        // Only a running view is rebuilt. A stopped one has already handed its
+        // GPU resources back and picks the new settings up when it next starts.
+        guard self.tunnel != nil else { return }
+        self.rebuild(with: Self.settings(from: settings, isPreview: self.isPreview))
     }
+
+    /// Set in `init`, once there is a `self` for it to manage.
+    private var lifecycle: SaverLifecycle!
 
     override init?(frame: NSRect, isPreview: Bool) {
         let identifier =
@@ -37,10 +44,12 @@ final class SlidersVortexView: ScreenSaverView {
 
         super.init(frame: frame, isPreview: isPreview)
 
-        animationTimeInterval = FrameClock.frameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
-        rebuild(with: Self.settings(from: store, isPreview: isPreview))
+        lifecycle = SaverLifecycle(view: self, frameInterval: FrameClock.frameInterval) {
+            [weak self] in self?.stopAnimation()
+        }
+        rebuild(with: Self.settings(from: store.settings, isPreview: isPreview))
     }
 
     @available(*, unavailable)
@@ -52,9 +61,9 @@ final class SlidersVortexView: ScreenSaverView {
 
     /// Stored settings, toned down for the System Settings thumbnail.
     private static func settings(
-        from store: VortexSettingsStore, isPreview: Bool
+        from stored: VortexSettings, isPreview: Bool
     ) -> VortexSettings {
-        var settings = store.settings
+        var settings = stored
         if isPreview {
             // The tile is a couple of hundred points across, so the full field
             // reads as noise and costs more than the thumbnail is worth.
@@ -67,9 +76,7 @@ final class SlidersVortexView: ScreenSaverView {
     /// particle count decides the size of the GPU buffers.
     private func rebuild(with settings: VortexSettings) {
         guard settings != builtWith || tunnel == nil else { return }
-        tunnel?.removeFromSuperview()
-        tunnel = nil
-        builtWith = nil
+        releaseView()
 
         let view: VortexMetalView
         do {
@@ -91,11 +98,26 @@ final class SlidersVortexView: ScreenSaverView {
     override func startAnimation() {
         frameClock.reset()
         // Pick up anything changed in the options sheet since last time.
-        rebuild(with: Self.settings(from: store, isPreview: isPreview))
+        rebuild(with: Self.settings(from: store.settings, isPreview: isPreview))
         super.startAnimation()
     }
 
+    /// Gives the Metal view back as well as stopping the timer. It holds the
+    /// particle buffers, the offscreen scene target and the drawables, and the
+    /// host keeps a stopped view alive indefinitely; see `SaverLifecycle`.
+    override func stopAnimation() {
+        super.stopAnimation()
+        releaseView()
+    }
+
+    private func releaseView() {
+        tunnel?.removeFromSuperview()
+        tunnel = nil
+        builtWith = nil
+    }
+
     override func animateOneFrame() {
+        guard !lifecycle.isSuspended else { return }
         super.animateOneFrame()
         tunnel?.advance(deltaTime: frameClock.tick())
     }

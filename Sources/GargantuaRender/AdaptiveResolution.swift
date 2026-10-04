@@ -24,20 +24,19 @@ public struct AdaptiveResolution {
     /// Set false to pin the scale where it is.
     public var isEnabled = true
 
-    /// Seconds per frame the GPU is allowed — about two thirds of one, not all
-    /// of it.
+    /// Seconds per frame the GPU is allowed — a quarter of one.
     ///
     /// The controller settles wherever cost sits between 0.62 and 1.15 of its
-    /// budget (see `note`), so a budget of a whole frame interval means it
-    /// settles at very nearly a whole frame interval: a screensaver holding the
-    /// GPU at full tilt indefinitely. Leaving a third of each frame idle costs
-    /// resolution and buys back the fans.
+    /// budget (see `note`), so the budget is very nearly the duty cycle the GPU
+    /// is held at, indefinitely, by something nobody is necessarily watching.
     ///
-    /// Measured on an M1 Pro at 2560x1600 this settles at 16.4 ms of a 33.3 ms
-    /// frame — a 49% duty cycle, at render scale 0.55. `GargantuaApp --bench`
-    /// reprints that, so retuning the fraction can be checked rather than
-    /// argued about.
-    public static let defaultBudget = 0.65 * FrameClock.frameInterval
+    /// It was two thirds of the frame, and on an M1 Pro's own 3456x2234 panel
+    /// that settled at 22.7 ms of every 33 ms — the GPU busy 68% of the time,
+    /// all night, with the fans to match. A quarter settles near the bottom of
+    /// the scale range there, and higher on smaller displays: resolution is the
+    /// thing given up, because a screensaver that runs hot is a worse screensaver
+    /// than a softer one. `GargantuaApp --bench` reprints where it lands.
+    public static let defaultBudget = 0.25 * FrameClock.frameInterval
 
     /// Seconds per frame the GPU is allowed. Only the tests set this.
     public var budget: Double = defaultBudget
@@ -51,7 +50,10 @@ public struct AdaptiveResolution {
     private var direction = 0
     private var agreementStreak = 0
 
-    public init(renderScale: Double = 0.55) {
+    /// Starts low: the controller waits sixty frames before it may move, and
+    /// starting above what the display can afford means seconds of dropped
+    /// frames at full GPU load before it does.
+    public init(renderScale: Double = 0.35) {
         self.renderScale = renderScale.clamped(to: Self.minimumScale...Self.maximumScale)
     }
 
@@ -95,7 +97,12 @@ public struct AdaptiveResolution {
         // fractions of a percent forever.
         let next = (renderScale * gain / 0.02).rounded() * 0.02
         let clamped = next.clamped(to: Self.minimumScale...Self.maximumScale)
-        guard abs(clamped - renderScale) >= 0.019 else { return false }
+        // A bound needn't sit on the 0.02 grid, so the last step onto it can be
+        // smaller than a grid step; without the exception the scale stalls one
+        // step short of the floor exactly when it most needs to reach it.
+        let ontoBound =
+            clamped != renderScale && (clamped == Self.minimumScale || clamped == Self.maximumScale)
+        guard abs(clamped - renderScale) >= 0.019 || ontoBound else { return false }
 
         renderScale = clamped
         agreementStreak = 0

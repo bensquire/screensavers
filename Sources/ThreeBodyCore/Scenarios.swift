@@ -578,13 +578,17 @@ public enum Scenarios {
                 stepBudget: stepsRemaining)
             if outcome.survivedHorizon { return candidate }
             stepsRemaining -= outcome.stepsUsed
-            if stepsRemaining <= 0 { break }
             // Keep the best of a bad lot rather than falling back to something
-            // arbitrary if every attempt is short-lived.
+            // arbitrary if every attempt is short-lived. A candidate the budget
+            // ran out on competes on how long it was seen to last, like any
+            // other — so one that alone used the whole budget still wins, while
+            // one handed the last few steps cannot win on not having been
+            // checked.
             let relative = outcome.survivedFor / max(horizon, 1e-12)
             if best == nil || relative > best!.survived {
                 best = (candidate, relative)
             }
+            if outcome.exhaustedBudget || stepsRemaining <= 0 { break }
         }
         return best?.scenario ?? generateOnce(family, using: &rng)
     }

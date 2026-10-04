@@ -22,6 +22,25 @@ final class SceneTests: XCTestCase {
         XCTAssertNotEqual(a.streaks, different.streaks)
     }
 
+    /// The particle clock reaches the GPU as a Float of milliseconds, so it must
+    /// never be allowed to grow with the session.
+    func testParticleClockStaysSmallOverALongSession() {
+        let scene = scene(VortexSettings(flowSpeed: 2.5, lightning: false, density: 0.25))
+        // Three hours at 30 fps.
+        for _ in 0..<(3 * 3600 * 30) {
+            scene.update(deltaTime: 1.0 / 30, layout: layout)
+        }
+        XCTAssertLessThan(scene.particleClockMs, VortexScene.particleClockLimitMs)
+        XCTAssertGreaterThan(scene.particleGeneration, 10)
+        for particle in scene.particles.streaks + scene.particles.sprites {
+            XCTAssertGreaterThanOrEqual(Double(particle.z0), Tunnel.zNear - 1e-4)
+            XCTAssertLessThanOrEqual(Double(particle.z0), Tunnel.zFar + 1e-4)
+            XCTAssertLessThan(abs(particle.angle), 7)
+            XCTAssertLessThan(abs(particle.wobblePhase), 7)
+            XCTAssertLessThan(abs(particle.twinklePhase), 7)
+        }
+    }
+
     func testFieldSplitsIntoStreaksAndSprites() {
         let set = ParticleSet(count: 5400, seed: 1)
         XCTAssertEqual(set.streaks.count + set.sprites.count, 5400)

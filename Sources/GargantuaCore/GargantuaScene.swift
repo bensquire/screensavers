@@ -25,7 +25,9 @@ public struct GargantuaSettings: Equatable {
         public static let pace: ClosedRange<Double> = 0.1...3.0
         public static let beaming: ClosedRange<Double> = 0...1
         public static let stars: ClosedRange<Double> = 0...1
-        public static let renderScale: ClosedRange<Double> = 0.30...1.0
+        /// Down to a quarter, so the adaptive controller has room to hold its
+        /// budget on the largest display it will draw for.
+        public static let renderScale: ClosedRange<Double> = 0.25...1.0
     }
 
     public static let `default` = GargantuaSettings(

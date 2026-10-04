@@ -90,9 +90,25 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
 
     private let solarSystem: SolarSystemRenderer
     /// SceneKit hands out an absolute host timestamp; the scene wants time since the
-    /// first frame. Latched here rather than in each host.
-    private var firstFrameTime: TimeInterval?
+    /// first frame. Accumulated frame by frame rather than taken as a difference from
+    /// the first one, so that time spent paused — stopped, or asleep with the
+    /// display — is not suddenly simulated when drawing resumes: at the default pace
+    /// a night's pause would otherwise jump the scene ten thousand years ahead.
+    private var frameClock = FrameClock()
+    private var elapsed: Double = 0
+    /// Longest step one frame may advance by. Anything longer was a pause.
+    private static let maximumFrameStep: Double = 0.1
     private var lastAspect: Double = 0
+
+    /// A viewport shape waiting to be applied by the render thread.
+    ///
+    /// `layout()` runs on the main thread and the scene is updated on SceneKit's
+    /// rendering thread, and both used to call into the renderer — its sample
+    /// buffers, its ribbons and its camera state, none of which are synchronised.
+    /// Now the main thread only leaves the new shape here and the render thread
+    /// picks it up, so the renderer is only ever touched from one thread.
+    private var pendingAspect: Double?
+    private let pendingAspectLock = NSLock()
 
     public init(
         renderer: SolarSystemRenderer,
@@ -117,7 +133,7 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
         preferredFramesPerSecond = Int(FrameClock.framesPerSecond)
         delegate = self
         overlaySKScene = renderer.overlayScene
-        reframeIfNeeded()
+        reframeIfNeeded(immediately: true)
     }
 
     @available(*, unavailable)
@@ -132,19 +148,33 @@ public final class SolarSystemSceneView: SCNView, SCNSceneRendererDelegate, Save
 
     /// The camera fit depends on aspect ratio, so it has to be redone when the viewport
     /// changes — and each display gets its own instance with its own shape.
-    private func reframeIfNeeded() {
+    ///
+    /// Applied directly only from `init`, before the view can be drawn; after that it
+    /// is handed to the render thread. See `pendingAspect`.
+    private func reframeIfNeeded(immediately: Bool = false) {
         guard bounds.height > 0 else { return }
         let aspect = Double(bounds.width / bounds.height)
         guard abs(aspect - lastAspect) > 0.001 else { return }
         lastAspect = aspect
-        solarSystem.reframe(aspectRatio: aspect)
+        if immediately {
+            solarSystem.reframe(aspectRatio: aspect)
+        } else {
+            pendingAspectLock.lock()
+            pendingAspect = aspect
+            pendingAspectLock.unlock()
+        }
     }
 
     // MARK: - SCNSceneRendererDelegate
 
     public func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
-        let start = firstFrameTime ?? time
-        firstFrameTime = start
-        solarSystem.update(to: solarSystem.date(forElapsed: time - start))
+        pendingAspectLock.lock()
+        let aspect = pendingAspect
+        pendingAspect = nil
+        pendingAspectLock.unlock()
+        if let aspect { solarSystem.reframe(aspectRatio: aspect) }
+
+        elapsed += frameClock.tick().clamped(to: 0...Self.maximumFrameStep)
+        solarSystem.update(to: solarSystem.date(forElapsed: elapsed))
     }
 }

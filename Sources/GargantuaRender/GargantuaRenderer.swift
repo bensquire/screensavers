@@ -8,8 +8,10 @@ import SaverKit
 ///
 /// Six passes, all full-screen, in one command buffer:
 ///
-///   march     the geodesic integration, at render scale, into an HDR buffer
-///   accumulate  reproject the previous frame and blend into it
+///   march     the geodesic integration, at render scale, into an HDR buffer —
+///             half the pixels a frame, in an alternating checkerboard
+///   accumulate  fill in the unmarched half, reproject the previous frame
+///             and blend into it
 ///   bright    threshold for bloom
 ///   down/up   the bloom pyramid
 ///   streak    optional anamorphic smear, skipped entirely when it is off
@@ -160,6 +162,7 @@ public final class GargantuaRenderer {
         let renderWidth: Int
         let renderHeight: Int
 
+        /// The march's output: half the render width, one of each horizontal pair.
         let scene: MTLTexture
         let historyA: MTLTexture
         let historyB: MTLTexture
@@ -189,7 +192,8 @@ public final class GargantuaRenderer {
     }
 
     private func targets(outputWidth: Int, outputHeight: Int, renderScale: Double) -> RenderTargets {
-        let renderWidth = max(2, Int((Double(outputWidth) * renderScale).rounded()))
+        // Even, so every row of the checkerboard has the same number of each half.
+        let renderWidth = max(2, Int((Double(outputWidth) * renderScale).rounded())) & ~1
         let renderHeight = max(2, Int((Double(outputHeight) * renderScale).rounded()))
         if let existing = targets,
             existing.outputWidth == outputWidth, existing.outputHeight == outputHeight,
@@ -212,7 +216,7 @@ public final class GargantuaRenderer {
         let fresh = RenderTargets(
             outputWidth: outputWidth, outputHeight: outputHeight,
             renderWidth: renderWidth, renderHeight: renderHeight,
-            scene: makeTarget(renderWidth, renderHeight, label: "scene"),
+            scene: makeTarget(renderWidth / 2, renderHeight, label: "scene"),
             historyA: makeTarget(renderWidth, renderHeight, label: "history A"),
             historyB: makeTarget(renderWidth, renderHeight, label: "history B"),
             bloom: bloom,
@@ -226,6 +230,15 @@ public final class GargantuaRenderer {
 
     /// Fraction of the output the march is currently running at.
     public var renderScale: Double { adaptive.renderScale }
+
+    /// This renderer's share of the GPU budget, when several draw at once — one
+    /// per display.
+    public var budgetShare: Double = 1 {
+        didSet {
+            guard budgetShare != oldValue else { return }
+            adaptive.budget = AdaptiveResolution.defaultBudget * budgetShare.clamped(to: 0.05...1)
+        }
+    }
 
     /// Pins the render scale, turning the adaptive controller off. For the fixed
     /// resolution setting, and for thumbnails, where sixty frames of settling is
@@ -252,9 +265,12 @@ public final class GargantuaRenderer {
         let rt = targets(
             outputWidth: target.width, outputHeight: target.height,
             renderScale: adaptive.renderScale)
+        // Alternating halves, so each pixel is marched every other frame.
+        let checker = Float(scene.frameIndex & 1)
 
-        march(scene, into: rt, in: commandBuffer)
-        let resolved = accumulate(scene, deltaTime: deltaTime, into: rt, in: commandBuffer)
+        march(scene, checker: checker, into: rt, in: commandBuffer)
+        let resolved = accumulate(
+            scene, checker: checker, deltaTime: deltaTime, into: rt, in: commandBuffer)
         bloom(scene, from: resolved, into: rt, in: commandBuffer)
         let streaks = streak(scene, in: rt, commandBuffer: commandBuffer)
         composite(
@@ -264,10 +280,12 @@ public final class GargantuaRenderer {
 
     /// The geodesic integration, at render scale.
     private func march(
-        _ scene: GargantuaScene, into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
+        _ scene: GargantuaScene, checker: Float,
+        into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
     ) {
         var uniforms = MarchUniforms(
-            scene: scene, resolution: rt.renderResolution, noiseTexels: NoiseVolume.size)
+            scene: scene, resolution: rt.renderResolution, noiseTexels: NoiseVolume.size,
+            checker: checker)
         encode(pass: rt.scene, label: "march", in: commandBuffer) { encoder in
             encoder.setRenderPipelineState(self.marchPipeline)
             encoder.setFragmentBytes(&uniforms, length: MemoryLayout<MarchUniforms>.stride, index: 0)
@@ -280,7 +298,7 @@ public final class GargantuaRenderer {
     /// resolved image. Ping-ponged, so what is written becomes next frame's
     /// history.
     private func accumulate(
-        _ scene: GargantuaScene, deltaTime: Double,
+        _ scene: GargantuaScene, checker: Float, deltaTime: Double,
         into rt: RenderTargets, in commandBuffer: MTLCommandBuffer
     ) -> MTLTexture {
         let source = usingHistoryA ? rt.historyA : rt.historyB
@@ -288,7 +306,7 @@ public final class GargantuaRenderer {
         var uniforms = AccumulateUniforms(
             scene: scene, resolution: rt.renderResolution,
             alpha: scene.accumulationAlpha(deltaTime: deltaTime),
-            historyValid: historyValid)
+            historyValid: historyValid, checker: checker)
         encode(pass: destination, label: "accumulate", in: commandBuffer) { encoder in
             encoder.setRenderPipelineState(self.accumulatePipeline)
             encoder.setFragmentBytes(

@@ -173,8 +173,13 @@ public struct DisplayModel {
 
     /// Offset of the Sun from the scene origin at `date`, purely from galactic travel.
     public func sunOffset(at date: Date) -> SIMD3<Double> {
-        let years = date.timeIntervalSince(epoch) / Constants.secondsPerJulianYear
-        return GalacticFrame.solarApexDirection * (config.scale.driftUnitsPerYear * years)
+        driftPerSecond * date.timeIntervalSince(epoch)
+    }
+
+    /// The Sun's galactic travel, in scene units per second of simulated time.
+    var driftPerSecond: SIMD3<Double> {
+        GalacticFrame.solarApexDirection
+            * (config.scale.driftUnitsPerYear / Constants.secondsPerJulianYear)
     }
 
     /// Radial compression. Direction is preserved exactly; only |r| is remapped.
@@ -188,8 +193,15 @@ public struct DisplayModel {
 
     /// Full scene-space position of a planet at `date`, including the Sun's drift.
     public func scenePosition(of planet: Planet, at date: Date) throws -> SIMD3<Double> {
+        try orbitalPosition(of: planet, at: date) + sunOffset(at: date)
+    }
+
+    /// Scene-space position of a planet relative to the Sun: the orbit alone,
+    /// without the drift. Smooth in time, which is what lets `TrailSampler`
+    /// interpolate it; the drift is linear and is added back exactly.
+    func orbitalPosition(of planet: Planet, at date: Date) throws -> SIMD3<Double> {
         let eqj = try Ephemeris.helioPosition(planet, at: date)
-        return compress(GalacticFrame.galactic(fromEQJ: eqj)) + sunOffset(at: date)
+        return compress(GalacticFrame.galactic(fromEQJ: eqj))
     }
 
     /// Scene radius of the Sun's sphere. At `.trueScale` this is the Sun's actual
@@ -241,28 +253,29 @@ public struct DisplayModel {
         return max(1, drift + outermost)
     }
 
+    /// Every trail sampled straight from the ephemeris: the reference that
+    /// `TrailSampler` is measured against. Fine for a single frame, but far too
+    /// slow to call every frame — it evaluates the planetary theory 2,320 times.
     public func snapshot(at date: Date) throws -> SystemSnapshot {
-        var bodies: [BodySnapshot] = []
-        let sunNow = sunOffset(at: date)
-
-        for planet in Planet.allCases {
-            let duration = config.trail.duration(for: planet)
-            let n = sampleCount(for: planet)
-            var trail: [SIMD3<Double>] = []
-            trail.reserveCapacity(n)
-
-            for i in 0..<n {
-                // i = 0 is the oldest sample, i = n-1 is `date` itself.
-                let f = Double(i) / Double(n - 1)
-                let t = date.addingTimeInterval(-duration * (1 - f))
-                trail.append(try scenePosition(of: planet, at: t))
-            }
-
-            bodies.append(
-                BodySnapshot(planet: planet, scenePosition: trail[n - 1], trail: trail)
-            )
+        let bodies = try Planet.allCases.map { planet in
+            let trail = try self.trail(of: planet, at: date)
+            return BodySnapshot(planet: planet, scenePosition: trail[trail.count - 1], trail: trail)
         }
+        return SystemSnapshot(sunPosition: sunOffset(at: date), bodies: bodies)
+    }
 
-        return SystemSnapshot(sunPosition: sunNow, bodies: bodies)
+    /// One planet's trail, straight from the ephemeris, oldest sample first.
+    func trail(of planet: Planet, at date: Date) throws -> [SIMD3<Double>] {
+        let n = sampleCount(for: planet)
+        return try (0..<n).map { i in
+            try scenePosition(of: planet, at: sampleDate(i, of: n, for: planet, at: date))
+        }
+    }
+
+    /// When trail sample `i` of `n` was laid down: i = 0 is the oldest, and
+    /// i = n - 1 is `date` itself.
+    func sampleDate(_ i: Int, of n: Int, for planet: Planet, at date: Date) -> Date {
+        let f = Double(i) / Double(n - 1)
+        return date.addingTimeInterval(-config.trail.duration(for: planet) * (1 - f))
     }
 }

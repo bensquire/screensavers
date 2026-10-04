@@ -13,4 +13,11 @@ extension Double {
         guard isFinite else { return range.lowerBound }
         return Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
+
+    /// Reduced into `0..<modulus`, whatever the sign — a floor modulo, unlike
+    /// `truncatingRemainder`, whose result keeps the sign of the dividend. For
+    /// angles, and for anything else that wraps.
+    public func wrapped(modulo modulus: Double) -> Double {
+        self - modulus * (self / modulus).rounded(.down)
+    }
 }

@@ -17,8 +17,12 @@ final class ThreeBodyProblemView: ScreenSaverView {
 
     private lazy var configController = ConfigureSheetController(store: store) {
         [weak self] settings in
-        self?.engine.settings = settings
+        guard let self else { return }
+        self.engine.settings = Self.settings(from: settings, isPreview: self.isPreview)
     }
+
+    /// Set in `init`, once there is a `self` for it to manage.
+    private var lifecycle: SaverLifecycle!
 
     override init?(frame: NSRect, isPreview: Bool) {
         // System Settings keeps each module's preferences in its own domain.
@@ -28,14 +32,16 @@ final class ThreeBodyProblemView: ScreenSaverView {
         self.store = SettingsStore(defaults: SaverPreferences(moduleIdentifier: identifier))
 
         self.engine = SimulationEngine(
-            settings: Self.settings(from: store, isPreview: isPreview))
+            settings: Self.settings(from: store.settings, isPreview: isPreview))
 
         super.init(frame: frame, isPreview: isPreview)
 
         renderer.uiScale = isPreview ? 0.5 : 1.0
-        animationTimeInterval = FrameClock.frameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        lifecycle = SaverLifecycle(view: self, frameInterval: FrameClock.frameInterval) {
+            [weak self] in self?.stopAnimation()
+        }
     }
 
     @available(*, unavailable)
@@ -49,10 +55,10 @@ final class ThreeBodyProblemView: ScreenSaverView {
     /// `init` can use it before `super.init`, and so the two callers below
     /// cannot drift apart.
     private static func settings(
-        from store: SettingsStore,
+        from stored: SimulationSettings,
         isPreview: Bool
     ) -> SimulationSettings {
-        var settings = store.settings
+        var settings = stored
         if isPreview {
             // The thumbnail is a couple of hundred points wide; the readout
             // would be unreadable and the stars would look like noise.
@@ -65,11 +71,20 @@ final class ThreeBodyProblemView: ScreenSaverView {
     override func startAnimation() {
         frameClock.reset()
         // Pick up any changes made in the options sheet since last time.
-        engine.settings = Self.settings(from: store, isPreview: isPreview)
+        engine.settings = Self.settings(from: store.settings, isPreview: isPreview)
         super.startAnimation()
     }
 
+    /// Drops the renderer's caches as well as stopping the timer. The backdrop
+    /// alone is a full-screen bitmap — 30 MB on a 3456-pixel panel — and the
+    /// host keeps a stopped view alive indefinitely; see `SaverLifecycle`.
+    override func stopAnimation() {
+        super.stopAnimation()
+        renderer.purgeCaches()
+    }
+
     override func animateOneFrame() {
+        guard !lifecycle.isSuspended else { return }
         super.animateOneFrame()
 
         engine.update(

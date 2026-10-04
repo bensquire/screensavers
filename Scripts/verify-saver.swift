@@ -1,6 +1,7 @@
 // End-to-end check that a built .saver is something ScreenSaverEngine can actually
 // load: correct Mach-O type, principal class resolvable from Info.plist, both view
-// instances build, an options sheet is reachable, and a frame actually draws. Run:
+// instances build, an options sheet is reachable, and a frame actually draws — and
+// draws again after the view has been stopped and restarted. Run:
 //
 //   swift Scripts/verify-saver.swift "build/<saver>/<Name>.saver" [out.png]
 //
@@ -17,14 +18,6 @@ func fail(_ message: String) -> Never {
 }
 
 var args = Array(CommandLine.arguments.dropFirst())
-
-// Whether a drawn frame can be captured from the host view at all. A saver that
-// draws with Core Graphics renders into the view's backing store, so
-// cacheDisplay sees the frame. One that renders on the GPU — SceneKit, Metal,
-// WebGL in a web view — does not: its pixels never pass through the view's
-// context, and cacheDisplay returns an empty frame whether the scene is drawing
-// beautifully or not at all. Asserting on that would be worse than not
-// asserting, so each saver declares which it is.
 
 guard let path = args.first else {
     fail("usage: verify-saver.swift <path to .saver> [out.png]")
@@ -50,6 +43,57 @@ guard let saverClass = cls as? ScreenSaverView.Type else {
 }
 print("load:          ok — \(cls)")
 
+// A saver drawing through Metal or SceneKit renders on the GPU, so its backing
+// store stays empty and cacheDisplay would capture nothing. Those views answer
+// `captureSaverFrame` (SaverKit's SaverFrameCapturing) and hand back what they
+// actually drew; found by selector because this script dlopens the bundle and
+// cannot import the module.
+let capture = NSSelectorFromString("captureSaverFrame")
+func capturingView(in root: NSView) -> NSView? {
+    if root.responds(to: capture) { return root }
+    for child in root.subviews {
+        if let found = capturingView(in: child) { return found }
+    }
+    return nil
+}
+
+/// What the view is drawing right now, or nil if it declined — the only case
+/// being SceneKit on a virtualised GPU, where rendering at all aborts the process.
+func currentFrame(of view: ScreenSaverView) -> NSBitmapImageRep? {
+    if let source = capturingView(in: view) {
+        guard let image = source.perform(capture)?.takeUnretainedValue() as? NSImage,
+            let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return nil }
+        return NSBitmapImageRep(cgImage: cgImage)
+    }
+    guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+        fail("could not create a bitmap rep")
+    }
+    view.cacheDisplay(in: view.bounds, to: cached)
+    return cached
+}
+
+func litSamples(_ rep: NSBitmapImageRep) -> Int {
+    var lit = 0
+    for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
+        for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {
+            if let c = rep.colorAt(x: x, y: y), c.brightnessComponent > 0.05 { lit += 1 }
+        }
+    }
+    return lit
+}
+
+/// Real time has to pass between frames: a saver that derives its timestep from
+/// the wall clock advances by microseconds in a tight loop and renders its
+/// opening frame over and over, which would let this pass on a scene that never
+/// moved.
+func animate(_ view: ScreenSaverView, frames: Int) {
+    for _ in 0..<frames {
+        view.animateOneFrame()
+        Thread.sleep(forTimeInterval: 1.0 / 30.0)
+    }
+}
+
 for isPreview in [false, true] {
     let size = isPreview
         ? NSRect(x: 0, y: 0, width: 240, height: 150)
@@ -58,21 +102,28 @@ for isPreview in [false, true] {
         fail("init(frame:isPreview: \(isPreview)) returned nil")
     }
 
-    // Real time has to pass between frames: a saver that derives its timestep from
-    // the wall clock advances by microseconds in a tight loop and renders its
-    // opening frame over and over, which would let this pass on a scene that never
-    // moved.
     view.startAnimation()
     let frames = 90
-    for _ in 0..<frames {
-        view.animateOneFrame()
-        Thread.sleep(forTimeInterval: 1.0 / 30.0)
-    }
-    view.stopAnimation()
+    animate(view, frames: frames)
     print("instance:      isPreview=\(isPreview) animated \(frames) frames over "
         + String(format: "%.0f s", Double(frames) / 30.0))
 
-    guard !isPreview else { continue }
+    // Stopping has to be survivable. Savers here hand their GPU resources back
+    // on stop, because the host keeps a stopped view alive indefinitely, and
+    // rebuild them on the next start — a path nothing else would exercise.
+    func restart() {
+        view.stopAnimation()
+        guard !view.isAnimating else { fail("still animating after stopAnimation") }
+        view.startAnimation()
+        animate(view, frames: 10)
+    }
+
+    guard !isPreview else {
+        restart()
+        view.stopAnimation()
+        print("restart:       isPreview=\(isPreview) stopped and started again")
+        continue
+    }
 
     guard view.hasConfigureSheet else { fail("no configure sheet — the options are unreachable") }
     guard let sheet = view.configureSheet, let content = sheet.contentView else {
@@ -89,46 +140,15 @@ for isPreview in [false, true] {
     }
     print("options:       sheet ok — \(interactive.count) controls")
 
-    // A saver drawing through Metal or SceneKit renders on the GPU, so its
-    // backing store stays empty and cacheDisplay would capture nothing. Those
-    // views answer `captureSaverFrame` (SaverKit's SaverFrameCapturing) and hand
-    // back what they actually drew; found by selector because this script
-    // dlopens the bundle and cannot import the module.
-    let capture = NSSelectorFromString("captureSaverFrame")
-    func capturingView(in root: NSView) -> NSView? {
-        if root.responds(to: capture) { return root }
-        for child in root.subviews {
-            if let found = capturingView(in: child) { return found }
-        }
-        return nil
+    // Captured while still animating: a saver that releases its renderer on
+    // stop has nothing left to capture afterwards.
+    guard let rep = currentFrame(of: view) else {
+        print("render:        declined — this GPU cannot render this saver offscreen")
+        view.stopAnimation()
+        continue
     }
-
-    let rep: NSBitmapImageRep
-    if let source = capturingView(in: view) {
-        // A nil frame means the view declined — the only case being SceneKit on
-        // a virtualised GPU, where rendering at all aborts the process. Say so
-        // and move on rather than reporting a black frame that was never drawn.
-        guard let image = source.perform(capture)?.takeUnretainedValue() as? NSImage,
-            let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        else {
-            print("render:        declined — this GPU cannot render this saver offscreen")
-            continue
-        }
-        rep = NSBitmapImageRep(cgImage: cgImage)
-        print("render:        captured \(rep.pixelsWide)x\(rep.pixelsHigh) from the GPU")
-    } else {
-        guard let cached = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            fail("could not create a bitmap rep")
-        }
-        view.cacheDisplay(in: view.bounds, to: cached)
-        rep = cached
-    }
-    var lit = 0
-    for x in stride(from: 0, to: rep.pixelsWide, by: 4) {
-        for y in stride(from: 0, to: rep.pixelsHigh, by: 4) {
-            if let c = rep.colorAt(x: x, y: y), c.brightnessComponent > 0.05 { lit += 1 }
-        }
-    }
+    print("render:        captured \(rep.pixelsWide)x\(rep.pixelsHigh)")
+    let lit = litSamples(rep)
     print("render:        \(lit) lit samples")
     guard lit > 0 else { fail("rendered frame is black — it loaded but drew nothing") }
 
@@ -136,6 +156,13 @@ for isPreview in [false, true] {
         try? png.write(to: URL(fileURLWithPath: args[1]))
         print("wrote:         \(args[1])")
     }
+
+    restart()
+    guard let again = currentFrame(of: view), litSamples(again) > 0 else {
+        fail("drew nothing after being stopped and started again")
+    }
+    view.stopAnimation()
+    print("restart:       stopped, started again, and drew")
 }
 
-print("\nPASS — bundle loads, both instances animate and draw, options are reachable.")
+print("\nPASS — bundle loads, both instances animate, draw and survive a restart, options are reachable.")

@@ -1,6 +1,7 @@
 import AppKit
 import GargantuaCore
 import Metal
+import QuartzCore
 import SaverKit
 
 /// Draws the black hole into a `CAMetalLayer`.
@@ -30,6 +31,30 @@ public final class GargantuaMetalView: MetalLayerView, SaverFrameCapturing {
         }
     }
 
+    /// When each adaptive view last drew, so the budget can be shared out.
+    ///
+    /// The screensaver puts one view on every display, and each runs its own
+    /// controller against its own budget — so two displays held the GPU at twice
+    /// the duty cycle the budget is meant to be. Views share it instead, counting
+    /// only the ones that have drawn in the last half second: the host is known
+    /// to keep stopped views alive, and those must not shrink anyone's share.
+    /// Main thread only, like everything that draws.
+    private static var lastFrameAt: [ObjectIdentifier: CFTimeInterval] = [:]
+    private static let activeWindow: CFTimeInterval = 0.5
+
+    private func claimBudgetShare() {
+        guard scene.settings.adaptiveResolution else { return }
+        let now = CACurrentMediaTime()
+        Self.lastFrameAt[ObjectIdentifier(self)] = now
+        let live = Self.lastFrameAt.values.reduce(0) { $0 + (now - $1 < Self.activeWindow ? 1 : 0) }
+        // Stale entries — views gone, or stopped — are rare, so they are only swept
+        // when there are some rather than rebuilding the table every frame.
+        if live < Self.lastFrameAt.count {
+            Self.lastFrameAt = Self.lastFrameAt.filter { now - $0.value < Self.activeWindow }
+        }
+        renderer.budgetShare = 1 / Double(live)
+    }
+
     /// 4K, matching what the WebGL original allowed itself.
     ///
     /// Beyond this the march stops being affordable at any render scale the
@@ -57,6 +82,7 @@ public final class GargantuaMetalView: MetalLayerView, SaverFrameCapturing {
         // adaptive controller wants — unlike wall-clock time, which vsync
         // quantises and which cannot tell "just fast enough" from "four times
         // faster than needed".
+        claimBudgetShare()
         if let elapsed = lastGPUSeconds.take() {
             renderer.noteFrameCost(gpuSeconds: elapsed)
         }

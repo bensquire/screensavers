@@ -172,14 +172,55 @@ func downsample(_ image: CGImage, to size: CGSize) -> CGImage? {
     return context.makeImage()
 }
 
-// No `--bench` here yet. Say so and stop, rather than falling through and
-// opening a preview window that never exits — `make bench` would hang on it.
-if CommandLine.arguments.contains("--bench") {
-    FileHandle.standardError.write(
-        Data("this saver has no --bench mode; see GargantuaApp or ThreeBodyApp\n".utf8))
-    exit(2)
+/// Measures what a frame actually costs on this GPU.
+///
+///   VortexApp --bench [--width 2560] [--height 1600] [--frames 300]
+///
+/// The GPU's own elapsed time per frame, at each density the options allow.
+/// The CPU does next to nothing here — the particles are evaluated in the
+/// vertex shader — so this is the whole cost of the saver.
+func runBenchmark() -> Bool {
+    guard CommandLine.arguments.contains("--bench") else { return false }
+    let width = Benchmark.argument("--width", default: 2560)
+    let height = Benchmark.argument("--height", default: 1600)
+    let frames = max(20, Benchmark.argument("--frames", default: 300))
+
+    guard let device = MTLCreateSystemDefaultDevice(),
+        let target = Benchmark.renderTarget(device: device, width: width, height: height)
+    else { return true }
+    print("device: \(device.name)   output: \(width)x\(height)   \(frames) frames each\n")
+
+    let frameMs = FrameClock.frameInterval * 1000
+    print("density   GPU ms/frame        of a \(Int(frameMs)) ms frame")
+    print("          median   p95")
+    for density in [0.5, 1.0, 1.5] {
+        var settings = VortexSettings.default
+        settings.density = density
+        // Device pixels throughout, as the shaders see them on screen.
+        let layout = Layout(
+            pointWidth: Double(width), pointHeight: Double(height), backingScale: 1)
+        let scene = VortexScene(layout: layout, settings: settings, seed: 20_260_816)
+        guard let renderer = try? VortexRenderer(device: device, particles: scene.particles)
+        else { continue }
+
+        var samples: [Double] = []
+        for frame in 0..<frames {
+            scene.update(deltaTime: FrameClock.frameInterval, layout: layout)
+            guard let buffer = renderer.makeCommandBuffer() else { continue }
+            renderer.render(scene: scene, to: target, in: buffer)
+            let ms = Benchmark.gpuMilliseconds(committing: buffer)
+            if frame >= 10 { samples.append(ms) }
+        }
+        let (median, worst) = Benchmark.summary(samples)
+        print(
+            String(
+                format: "%4.0f%%     %6.2f  %6.2f     %3.0f%%",
+                density * 100, median, worst, median / frameMs * 100))
+    }
+    return true
 }
 
+if runBenchmark() { exit(0) }
 if renderThumbnail() { exit(0) }
 
 let app = NSApplication.shared

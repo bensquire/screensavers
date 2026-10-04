@@ -53,8 +53,10 @@ struct MarchUniforms {
     var stars: Float
     var nebula: Float
     var flare: Float
+    /// Which half of the checkerboard this frame marches, or -1 for every pixel.
+    var checker: Float
 
-    init(scene: GargantuaScene, resolution: SIMD2<Float>, noiseTexels: Int) {
+    init(scene: GargantuaScene, resolution: SIMD2<Float>, noiseTexels: Int, checker: Float) {
         let p = scene.parameters
         let camera = scene.camera.current
         let half = p.diskHalfCoefficients
@@ -105,6 +107,7 @@ struct MarchUniforms {
         self.stars = Float(p.stars)
         self.nebula = Float(p.nebula)
         self.flare = Float(scene.events.flare)
+        self.checker = checker
     }
 }
 
@@ -123,8 +126,12 @@ struct AccumulateUniforms {
     var clipK: Float
     var valid: Float
     var sharpen: Float
+    var checker: Float
 
-    init(scene: GargantuaScene, resolution: SIMD2<Float>, alpha: Float, historyValid: Bool) {
+    init(
+        scene: GargantuaScene, resolution: SIMD2<Float>, alpha: Float, historyValid: Bool,
+        checker: Float
+    ) {
         let current = scene.camera.current
         let previous = scene.camera.previous
         self.camPos = SIMD3(current.position)
@@ -141,6 +148,7 @@ struct AccumulateUniforms {
         self.clipK = Float(scene.parameters.clipK)
         self.valid = historyValid ? 1 : 0
         self.sharpen = Float(scene.parameters.sharpen)
+        self.checker = checker
     }
 }
 

@@ -16,6 +16,9 @@ public final class SolarSystemRenderer {
 
     public let scene = SCNScene()
     private let model: DisplayModel
+    /// Where each frame's trails come from: the ephemeris on a grid, interpolated,
+    /// rather than evaluated afresh at all 2,320 samples every frame.
+    private let trails: TrailSampler
     public let startDate: Date
     /// Simulated date currently displayed.
     public private(set) var currentDate: Date
@@ -49,6 +52,7 @@ public final class SolarSystemRenderer {
 
     public init(model: DisplayModel, startDate: Date) {
         self.model = model
+        self.trails = TrailSampler(model: model)
         self.startDate = startDate
         self.currentDate = startDate
         self.sunNode = Geometry.bodyNode(
@@ -504,7 +508,7 @@ public final class SolarSystemRenderer {
     /// camera along its orbit.
     public func update(to date: Date) {
         currentDate = date
-        guard let snap = try? model.snapshot(at: date) else { return }
+        guard let snap = try? trails.snapshot(at: date) else { return }
         let origin = snap.sunPosition
 
         let elapsed = elapsedRealSeconds(for: date)

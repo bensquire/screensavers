@@ -176,16 +176,10 @@ func renderThumbnail() -> Bool {
 /// seeds itself from the clock and the cost depends entirely on which scenario
 /// it picked and how long the trails have grown.
 func runBenchmark() -> Bool {
-    let args = CommandLine.arguments
-    guard args.contains("--bench") else { return false }
-
-    func value(_ name: String, _ fallback: Int) -> Int {
-        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return fallback }
-        return Int(args[i + 1]) ?? fallback
-    }
-    let width = value("--width", 2560)
-    let height = value("--height", 1600)
-    let frames = value("--frames", 300)
+    guard CommandLine.arguments.contains("--bench") else { return false }
+    let width = Benchmark.argument("--width", default: 2560)
+    let height = Benchmark.argument("--height", default: 1600)
+    let frames = Benchmark.argument("--frames", default: 300)
     let size = CGSize(width: width, height: height)
 
     let frameMs = FrameClock.frameInterval * 1000
@@ -234,12 +228,9 @@ func runBenchmark() -> Bool {
         }
         NSGraphicsContext.restoreGraphicsState()
 
-        drawTimes.sort()
-        updateTimes.sort()
         guard !drawTimes.isEmpty else { return }
-        let draw = drawTimes[drawTimes.count / 2]
-        let update = updateTimes[updateTimes.count / 2]
-        let updateWorst = updateTimes[Int(Double(updateTimes.count) * 0.95)]
+        let draw = Benchmark.summary(drawTimes).median
+        let (update, updateWorst) = Benchmark.summary(updateTimes)
         print(
             String(
                 format: "  %@ physics %6.2f ms (p95 %6.2f)   draw %5.2f ms   total %3.0f%%",

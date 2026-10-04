@@ -32,10 +32,10 @@ public final class GargantuaConfigureSheet: NSObject {
             format: { String(format: "%.0f%%", $0 * 100) }),
     ]
 
-    private lazy var sliders = SliderGrid<GargantuaSettings>(specs: Self.sliderSpecs) {
-        [weak self] keyPath, value in
-        self?.working[keyPath: keyPath] = value
-    }
+    /// The grid in the sheet now showing. Held here because it is its sliders'
+    /// target, and a control does not retain its target.
+    private var sliders: SliderGrid<GargantuaSettings>?
+    private var shown: NSWindow?
 
     public init(store: GargantuaSettingsStore, onCommit: @escaping (GargantuaSettings) -> Void) {
         self.store = store
@@ -44,7 +44,19 @@ public final class GargantuaConfigureSheet: NSObject {
         super.init()
     }
 
-    public private(set) lazy var window: NSWindow = makeWindow()
+    /// A fresh sheet each time it is asked for, showing the settings as they are now.
+    ///
+    /// Built once and shown again, a sheet carries whatever it showed last time — a
+    /// value dragged and then cancelled, or one saved since by another instance —
+    /// into the next commit. And the host can dismiss it its own way, leaving a
+    /// window that has already been ended. Solar System's sheet is rebuilt for the
+    /// same reasons.
+    public var window: NSWindow {
+        working = store.settings
+        let window = makeWindow()
+        shown = window
+        return window
+    }
 
     private func makeWindow() -> NSWindow {
         let sheet = OptionsSheet(
@@ -53,7 +65,12 @@ public final class GargantuaConfigureSheet: NSObject {
                 + "real null geodesics integrated in Kerr-Schild coordinates.")
 
         let grid = OptionsSheet.grid()
+        let sliders = SliderGrid<GargantuaSettings>(specs: Self.sliderSpecs) {
+            [weak self] keyPath, value in
+            self?.working[keyPath: keyPath] = value
+        }
         sliders.install(in: grid, settings: working)
+        self.sliders = sliders
         sheet.add(grid, stretched: true)
         sheet.addSeparator()
 
@@ -67,8 +84,9 @@ public final class GargantuaConfigureSheet: NSObject {
             OptionsSheet.note(
                 "Every pixel integrates a light path through curved spacetime, so cost "
                     + "scales with resolution. Left to adapt, the scale is driven to fit "
-                    + "the frame into about two thirds of its time budget, leaving the rest "
-                    + "of the GPU alone; fixed, the slider above decides it.\n\n"
+                    + "the frame into about a quarter of its time budget, leaving the rest "
+                    + "of the GPU — and the fans — alone; fixed, the slider above decides "
+                    + "it.\n\n"
                     + "Doppler beaming is the bright-limb/dim-limb asymmetry a real "
                     + "orbiting disk shows. Interstellar dropped it because it broke the "
                     + "shot, so it is off by default — the gravitational redshift, which "
@@ -89,12 +107,16 @@ public final class GargantuaConfigureSheet: NSObject {
     @objc private func commit(_ sender: Any?) {
         store.settings = working
         onCommit(store.settings)
-        OptionsSheet.close(window)
+        close()
     }
 
     @objc private func cancel(_ sender: Any?) {
-        working = store.settings
-        sliders.refresh(working)
-        OptionsSheet.close(window)
+        close()
+    }
+
+    private func close() {
+        if let shown { OptionsSheet.close(shown) }
+        shown = nil
+        sliders = nil
     }
 }

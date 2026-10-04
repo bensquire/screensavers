@@ -99,8 +99,8 @@ Six passes:
 
 | | |
 |---|---|
-| **march** | The geodesic integration, into an HDR buffer at render scale |
-| **accumulate** | Reproject the previous frame through the previous camera and blend |
+| **march** | The geodesic integration, into an HDR buffer at render scale — half the pixels each frame, in an alternating checkerboard |
+| **accumulate** | Rebuild the unmarched half from its neighbours, reproject the previous frame through the previous camera, and blend |
 | **bright** | Threshold for bloom |
 | **down / up** | A five-level bloom pyramid, walked back up additively |
 | **streak** | Anamorphic smear — off in the shipped look, and skipped outright when it is |
@@ -114,12 +114,38 @@ time per frame — unlike the WebGL original, which had to cross-check two
 untrustworthy clocks because wall time is quantised by vsync and the timer-query
 extension bracketed CPU gaps too.
 
-It deliberately aims at about two thirds of the frame, not all of it, and the
-scene runs at 30fps rather than 60. Measured on an M1 Pro at 2560x1600, a frame
-at the settled render scale costs 16.4ms: that was 99% of a 60fps frame and is
-now 49% of a 30fps one, for the same rendered resolution. `GargantuaApp --bench`
-prints the whole cost curve and where the controller lands, so any change to
-that claim can be checked rather than argued about.
+It aims at a quarter of each 30fps frame. That is a choice about heat, not
+about what the GPU can do: the controller settles very close to its budget and
+stays there all night, so the budget *is* the duty cycle. It used to be two
+thirds, and on an M1 Pro's own 3456x2234 panel that settled at 22.7 ms of every
+33 ms — the GPU busy 68% of the time, fans and all. Now it settles at 8.4 ms,
+25%.
+
+Most of that came from spending less, and the resolution it would have cost was
+mostly bought back by **marching half the pixels**. Each frame marches one half
+of a checkerboard and the other half the next; the accumulate pass rebuilds the
+missing half from its four marched neighbours and blends both into the
+reprojected history at the same rate. So the march — nearly the whole cost —
+halves, and the controller spends the saving on resolution: 0.35 of the display
+at a quarter of the frame, where marching every pixel could only afford 0.25.
+A still or slowly turning disk converges to that full resolution within two
+frames. Holding the unmarched half on its history alone looked sharper in a
+still and showed the checkerboard as a fine mesh on anything moving, so it
+doesn't.
+
+| 3456x2234, M1 Pro | settles at | GPU per frame | of the frame |
+|---|---|---|---|
+| before | scale 0.44 | 22.7 ms | 68% |
+| a quarter of the frame | scale 0.25 (the floor) | 9.8 ms | 30% |
+| and checkerboarded | scale 0.35 | 8.4 ms | 25% |
+
+The budget is shared, not per display. The screensaver puts a view on every
+display and each runs its own controller, so two displays used to hold the GPU at
+twice the duty cycle; now each view takes an equal share of the quarter, counting
+only views that have drawn in the last half second.
+
+`GargantuaApp --bench` prints the whole cost curve and where the controller
+lands, so any change to that claim can be checked rather than argued about.
 
 **Accumulation is what makes one sample per pixel look clean.** Each frame
 jitters its rays by a Halton offset and blends into a reprojected history, with

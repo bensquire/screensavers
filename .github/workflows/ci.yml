@@ -47,9 +47,12 @@ jobs:
 
       - name: Every saver is covered by this matrix
         run: |
+          # The matrix line itself, not the whole file: a saver's name in a
+          # comment — "the three-body tests…" above — satisfied the old check.
+          matrix=$(grep -E '^[[:space:]]*saver: \[' .github/workflows/ci.yml)
           for dir in savers/*/; do
             name=$(basename "$dir")
-            grep -q "\b$name\b" .github/workflows/ci.yml \
+            echo "$matrix" | grep -qE "[[ ,]$name[],]" \
               || { echo "::error::savers/$name is not in the CI matrix"; exit 1; }
           done
 

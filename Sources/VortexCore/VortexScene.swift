@@ -9,7 +9,10 @@ import SaverCore
 /// regardless of how many particles there are.
 public final class VortexScene {
 
-    public let particles: ParticleSet
+    public private(set) var particles: ParticleSet
+    /// Bumped each time `particles` is replaced by a rebased copy, so a renderer
+    /// holding them in GPU buffers knows to upload them again.
+    public private(set) var particleGeneration = 0
     public let settings: VortexSettings
     public private(set) var layout: Layout
 
@@ -21,7 +24,19 @@ public final class VortexScene {
     /// Decoupling the two is what lets the tunnel breathe: the flow speeds up and
     /// slows down without the background, the lightning cadence or the colour
     /// drift speeding up with it.
+    ///
+    /// Kept small by rebasing — see `particleClockLimitMs`.
     public private(set) var particleClockMs: Double = 0
+
+    /// How far the particle clock may run before it is folded into the particles.
+    ///
+    /// The shaders take the clock as a `Float` of milliseconds and multiply it by
+    /// each particle's rates, so its precision is the motion's precision. Left to
+    /// run, a night's session had the clock in 4 ms steps and depth in steps of
+    /// 0.016 — streaks visibly snapping near the eye — and a weekend froze
+    /// alternate frames. Folding it in every ten minutes keeps the clock under a
+    /// sixteenth of a millisecond of rounding, for a 260 KB upload.
+    static let particleClockLimitMs = 600_000.0
 
     /// Current deviation from normal flow speed, roughly -0.35...+0.55.
     public private(set) var warp: Double = 0
@@ -76,6 +91,7 @@ public final class VortexScene {
             + sin(elapsedMs * 0.00028) * 0.28
             + sin(elapsedMs * 0.00041 + 1.7) * 0.18
         particleClockMs += dt * max(0.5, 1 + warp) * settings.flowSpeed
+        if particleClockMs >= Self.particleClockLimitMs { rebaseParticleClock() }
 
         advanceShocks(by: dt)
         steer(by: dt)
@@ -107,6 +123,14 @@ public final class VortexScene {
         let lean = bendX
         let direction: Double = lean == 0 ? 1 : (lean < 0 ? -1 : 1)
         tubeSpin += 0.00028 * (0.15 + abs(lean) * 1.35) * direction * dt
+    }
+
+    /// Folds the particle clock into the particles and restarts it from zero.
+    /// Nothing on screen changes; see `Particle.advanced`.
+    func rebaseParticleClock() {
+        particles = particles.advanced(byMs: particleClockMs)
+        particleClockMs = 0
+        particleGeneration += 1
     }
 
     // MARK: - Lightning

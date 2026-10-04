@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SaverKit
 import SceneKit
 import SolarSystemCore
 import SolarSystemRender
@@ -23,6 +24,8 @@ struct LaunchOptions {
     var config = SceneConfig()
     /// For --render: how far into the animation to jump before snapshotting.
     var renderAtSeconds: Double = 0
+    var bench = false
+    var benchFrames = 300
 }
 
 func parseOptions() -> LaunchOptions {
@@ -62,6 +65,8 @@ func parseOptions() -> LaunchOptions {
         case "--width": o.width = Int(value(a) ?? "") ?? o.width
         case "--height": o.height = Int(value(a) ?? "") ?? o.height
         case "--at": o.renderAtSeconds = Double(value(a) ?? "") ?? 0
+        case "--bench": o.bench = true
+        case "--frames": o.benchFrames = Int(value(a) ?? "") ?? o.benchFrames
         case "--zoom": o.zoom = Double(value(a) ?? "") ?? o.zoom
         case "--elevation": o.elevation = Double(value(a) ?? "")
         case "--azimuth": o.azimuth = Double(value(a) ?? "")
@@ -99,6 +104,7 @@ func parseOptions() -> LaunchOptions {
                 SolarSystemApp — astronomically-positioned solar system drifting through the galaxy
 
                   --render PATH        render one frame to PNG and exit (no window needed)
+                  --bench              time the per-frame work and exit (see --frames)
                   --at SECONDS         animation time to render at (with --render)
                   --width N            (default 1280)
                   --height N           (default 720)
@@ -231,12 +237,76 @@ if let path = options.renderPath {
     exit(0)
 }
 
-// No `--bench` here yet. Say so and stop, rather than falling through and
-// opening a preview window that never exits — `make bench` would hang on it.
-if CommandLine.arguments.contains("--bench") {
-    FileHandle.standardError.write(
-        Data("this saver has no --bench mode; see GargantuaApp or ThreeBodyApp\n".utf8))
-    exit(2)
+/// Times a frame's work, offscreen.
+///
+///   SolarSystemApp --bench [--width 2560] [--height 1600] [--frames 300]
+///
+/// The CPU side is the scene update — the ephemeris, the camera fit and the
+/// ribbons — which is what SceneKit's render thread spends before it can draw.
+/// The direct ephemeris is timed alongside it, because that is what every frame
+/// used to cost on its own. The GPU side is SceneKit's own pass, without the
+/// on-screen view's multisampling, which only adds to it.
+func runBenchmark(_ options: LaunchOptions) {
+    let frames = max(10, options.benchFrames)
+    let frameMs = FrameClock.frameInterval * 1000
+    let step = FrameClock.frameInterval
+    print(
+        "output \(options.width)x\(options.height), \(frames) frames at "
+            + "\(Int(FrameClock.framesPerSecond)) fps\n")
+
+    func report(_ label: String, _ samples: [Double], of resource: String = "a core") {
+        let ms = Benchmark.summary(samples).median
+        print(
+            String(
+                format: "  %@ %7.3f ms/frame   %5.1f%% of %@",
+                label.padding(toLength: 26, withPad: " ", startingAt: 0), ms, ms / frameMs * 100,
+                resource))
+    }
+
+    var direct: [Double] = []
+    for frame in 0..<frames {
+        let start = CACurrentMediaTime()
+        _ = try? model.snapshot(at: renderer.date(forElapsed: Double(frame) * step))
+        direct.append((CACurrentMediaTime() - start) * 1000)
+    }
+    report("ephemeris, every sample", direct)
+
+    var updates: [Double] = []
+    for frame in 0..<frames {
+        let start = CACurrentMediaTime()
+        renderer.update(to: renderer.date(forElapsed: Double(frame) * step))
+        updates.append((CACurrentMediaTime() - start) * 1000)
+    }
+    report("scene update (sampled)", updates)
+
+    guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
+        let target = Benchmark.renderTarget(
+            device: device, width: options.width, height: options.height)
+    else { return }
+    let scnRenderer = SCNRenderer(device: device, options: nil)
+    scnRenderer.scene = renderer.scene
+    scnRenderer.pointOfView = renderer.pointOfView
+    var gpu: [Double] = []
+    for frame in 0..<min(frames, 120) {
+        renderer.update(to: renderer.date(forElapsed: Double(frames + frame) * step))
+        guard let buffer = queue.makeCommandBuffer() else { continue }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        scnRenderer.render(
+            atTime: Double(frame) * step,
+            viewport: CGRect(x: 0, y: 0, width: options.width, height: options.height),
+            commandBuffer: buffer, passDescriptor: pass)
+        let ms = Benchmark.gpuMilliseconds(committing: buffer)
+        if frame >= 10 { gpu.append(ms) }
+    }
+    report("SceneKit pass (no MSAA)", gpu, of: "the GPU")
+}
+
+if options.bench {
+    runBenchmark(options)
+    exit(0)
 }
 
 let app = NSApplication.shared

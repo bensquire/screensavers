@@ -73,11 +73,14 @@ final class RenderTests: XCTestCase {
 
     // MARK: - Drawing
 
+    /// - Parameter eachFrame: called after every update, with its index, for a
+    ///   test that needs to reach into the scene part-way through.
     private func renderFrame(
         settleSeconds: Double = 4,
         settings: VortexSettings = .default,
         width: Int = 320,
-        height: Int = 200
+        height: Int = 200,
+        eachFrame: (Int, VortexScene) -> Void = { _, _ in }
     ) throws -> (image: CGImage, pixels: [UInt8]) {
         let device = try makeDevice()
         let library = try ShaderLibrary.compileFromSource(device: device)
@@ -89,9 +92,12 @@ final class RenderTests: XCTestCase {
 
         let step = FrameClock.frameInterval
         var t = 0.0
+        var frame = 0
         while t < settleSeconds {
             scene.update(deltaTime: step, layout: layout)
+            eachFrame(frame, scene)
             t += step
+            frame += 1
         }
         guard let image = renderer.renderToImage(scene: scene, width: width, height: height) else {
             throw XCTSkip("the GPU did not return a frame")
@@ -115,6 +121,14 @@ final class RenderTests: XCTestCase {
             context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
         }
         return pixels
+    }
+
+    /// How many pixels differ between two frames by more than `threshold` in any
+    /// one channel's byte.
+    private static func differingPixels(_ a: [UInt8], _ b: [UInt8], threshold: Int) -> Int {
+        stride(from: 0, to: min(a.count, b.count), by: 4).filter { i in
+            (0..<3).contains { abs(Int(a[i + $0]) - Int(b[i + $0])) > threshold }
+        }.count
     }
 
     func testAFrameHasSomethingInIt() throws {
@@ -142,15 +156,29 @@ final class RenderTests: XCTestCase {
         let later = try renderFrame(settleSeconds: 9).pixels
         XCTAssertEqual(early.count, later.count)
 
-        var changed = 0
-        for i in stride(from: 0, to: early.count, by: 4)
-        where
-            abs(Int(early[i]) - Int(later[i])) > 8
-        {
-            changed += 1
-        }
         XCTAssertGreaterThan(
-            changed, early.count / 4 / 50, "the tunnel looks identical eight seconds later")
+            RenderTests.differingPixels(early, later, threshold: 8), early.count / 4 / 50,
+            "the tunnel looks identical eight seconds later")
+    }
+
+    /// Rebasing the particle clock is meant to change nothing on screen. Two
+    /// identical runs, one of them rebased part-way through, must draw the same
+    /// frame.
+    func testRebasingTheParticleClockChangesNothingOnScreen() throws {
+        let settings = VortexSettings(flowSpeed: 1, lightning: false, density: 1)
+        let plain = try renderFrame(settleSeconds: 8, settings: settings).pixels
+        var generation = 0
+        let rebased = try renderFrame(settleSeconds: 8, settings: settings) { frame, scene in
+            if frame == 120 { scene.rebaseParticleClock() }
+            generation = scene.particleGeneration
+        }.pixels
+        XCTAssertEqual(generation, 1)
+
+        // Float rounding moves the odd edge pixel by a level or two; a particle
+        // in the wrong place moves dozens of pixels by far more.
+        XCTAssertLessThan(
+            RenderTests.differingPixels(plain, rebased, threshold: 6), plain.count / 4 / 500,
+            "rebasing moved the particles")
     }
 
     func testDensityChangesWhatIsDrawn() throws {

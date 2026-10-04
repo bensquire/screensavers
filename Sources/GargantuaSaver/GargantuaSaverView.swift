@@ -25,8 +25,15 @@ final class GargantuaView: ScreenSaverView {
 
     private lazy var configController = GargantuaConfigureSheet(store: store) {
         [weak self] settings in
-        self?.rebuild(with: settings)
+        guard let self else { return }
+        // Only a running view is rebuilt. A stopped one has already handed its
+        // GPU resources back and picks the new settings up when it next starts.
+        guard self.blackHole != nil else { return }
+        self.rebuild(with: Self.settings(from: settings, isPreview: self.isPreview))
     }
+
+    /// Set in `init`, once there is a `self` for it to manage.
+    private var lifecycle: SaverLifecycle!
 
     override init?(frame: NSRect, isPreview: Bool) {
         let identifier =
@@ -38,10 +45,12 @@ final class GargantuaView: ScreenSaverView {
 
         super.init(frame: frame, isPreview: isPreview)
 
-        animationTimeInterval = FrameClock.frameInterval
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
-        rebuild(with: Self.settings(from: store, isPreview: isPreview))
+        lifecycle = SaverLifecycle(view: self, frameInterval: FrameClock.frameInterval) {
+            [weak self] in self?.stopAnimation()
+        }
+        rebuild(with: Self.settings(from: store.settings, isPreview: isPreview))
     }
 
     @available(*, unavailable)
@@ -52,9 +61,9 @@ final class GargantuaView: ScreenSaverView {
     override var isOpaque: Bool { true }
 
     private static func settings(
-        from store: GargantuaSettingsStore, isPreview: Bool
+        from stored: GargantuaSettings, isPreview: Bool
     ) -> GargantuaSettings {
-        var settings = store.settings
+        var settings = stored
         if isPreview {
             // The tile is a couple of hundred points across, so it can afford to
             // march every pixel — and the adaptive controller needs sixty frames
@@ -69,9 +78,7 @@ final class GargantuaView: ScreenSaverView {
     /// the scene's parameters, so a change starts a fresh one.
     private func rebuild(with settings: GargantuaSettings) {
         guard settings != builtWith || blackHole == nil else { return }
-        blackHole?.removeFromSuperview()
-        blackHole = nil
-        builtWith = nil
+        releaseView()
 
         let view: GargantuaMetalView
         do {
@@ -92,11 +99,26 @@ final class GargantuaView: ScreenSaverView {
 
     override func startAnimation() {
         frameClock.reset()
-        rebuild(with: Self.settings(from: store, isPreview: isPreview))
+        rebuild(with: Self.settings(from: store.settings, isPreview: isPreview))
         super.startAnimation()
     }
 
+    /// Gives the Metal view back as well as stopping the timer. It holds the
+    /// render targets and drawables — tens of megabytes of GPU memory — and the
+    /// host keeps a stopped view alive indefinitely; see `SaverLifecycle`.
+    override func stopAnimation() {
+        super.stopAnimation()
+        releaseView()
+    }
+
+    private func releaseView() {
+        blackHole?.removeFromSuperview()
+        blackHole = nil
+        builtWith = nil
+    }
+
     override func animateOneFrame() {
+        guard !lifecycle.isSuspended else { return }
         super.animateOneFrame()
         blackHole?.advance(deltaTime: frameClock.tick())
     }

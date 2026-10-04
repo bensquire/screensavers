@@ -49,6 +49,15 @@ public final class Renderer {
 
     public init() {}
 
+    /// Lets go of everything that is rebuilt on demand — chiefly the backdrop,
+    /// which is a bitmap the size of the screen. For a stopped saver, which the
+    /// host keeps alive long after anyone is looking at it.
+    public func purgeCaches() {
+        backgroundImage = nil
+        backgroundKey = nil
+        starField = StarField()
+    }
+
     private var titleFont: NSFont?
     private var bodyFont: NSFont?
 

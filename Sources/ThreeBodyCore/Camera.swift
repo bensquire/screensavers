@@ -114,6 +114,10 @@ public struct Camera {
     private var logScaleOffset: Double = 0
     private var initialised = false
 
+    /// False from `reset()` until the first `update` has framed the new scene.
+    /// Until then `worldPerPoint` still describes whatever was framed before.
+    public var isFramed: Bool { initialised }
+
     public mutating func reset() {
         initialised = false
         centerOffset = .zero

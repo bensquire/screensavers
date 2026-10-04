@@ -50,10 +50,18 @@ normally.
 
 Nothing walks the particle field. Each of the 5400 particles is a fixed set of
 constants — an angle around the tunnel, a radius, a starting depth, a speed, a
-wobble — uploaded once into a GPU buffer and never touched again. A particle's
-position at any moment is a pure function of those constants and the clock, so
-the vertex shader works it out rather than the CPU tracking it. The processor's
-whole job each frame is a handful of sines.
+wobble — uploaded into a GPU buffer. A particle's position at any moment is a
+pure function of those constants and the clock, so the vertex shader works it
+out rather than the CPU tracking it. The processor's whole job each frame is a
+handful of sines.
+
+The clock reaches the shader as a `Float` of milliseconds, so it cannot be left
+to run: after a night its resolution is 4 ms and a streak near the eye moves in
+visible steps, and after a weekend alternate frames freeze. Every ten minutes
+the elapsed clock is folded into the particles instead — depth wraps modulo the
+tunnel's length and everything else is an angle, so the fold is exact — and the
+clock starts again from zero. Nothing on screen changes; `RenderTests` renders
+the same frame both ways to make sure.
 
 Five passes:
 

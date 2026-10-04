@@ -38,6 +38,8 @@ public struct DiskEvents {
     private var live: [HotSpot] = []
     private var nextSpotAt: Double = 6
     private var flareUntil: Double = -1
+    /// How long the current flare lasts, so its envelope spans exactly that.
+    private var flareLength: Double = 1
     private var flarePeak: Double = 1
     private var nextFlareAt: Double = 40
     private var rng: SplitMix64
@@ -116,13 +118,18 @@ public struct DiskEvents {
 
     private mutating func updateFlare(time t: Double, rate: Double) {
         if t > nextFlareAt {
-            flareUntil = t + (4 + rng.nextDouble() * 6) * rate
+            flareLength = (4 + rng.nextDouble() * 6) * rate
+            flareUntil = t + flareLength
             // Stacks with the hot spots, so it stays modest.
             flarePeak = 1.20 + rng.nextDouble() * 0.45
             nextFlareAt = flareUntil + (28 + rng.nextDouble() * 70) * rate
         }
         if t < flareUntil {
-            let k = 1 - (flareUntil - t) / 12
+            // Measured against the flare's own length. A fixed 12 s here started
+            // every flare of up to 10 s part-way up its curve, so the whole disk
+            // stepped up to as much as 1.65x brighter in a single frame — and the
+            // accumulation's variance clip passes a step like that straight through.
+            let k = 1 - (flareUntil - t) / flareLength
             flare = 1 + (flarePeak - 1) * sin(min(max(k, 0), 1) * .pi)
         } else {
             flare = 1

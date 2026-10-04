@@ -239,17 +239,35 @@ ratio and each display gets its own saver instance.
 
 ## Performance
 
-`SolarSystemRenderer.update(to:)` costs **1.23 ms**: 0.99 ms of ephemeris
-(2,320 trail samples rebuilt from scratch), 0.14 ms fitting the camera, 0.07 ms
-rebuilding the ribbon geometry, 0.02 ms on the date overlay. It runs on
-SceneKit's display link, so the budget is 16.7 ms at 60 Hz — about 7%.
-`ssverify` section [6] re-measures the snapshot.
+Every frame resamples all eight trails, because every sample sits a fixed
+interval behind a moving present: 2,320 evaluations of the planetary theory a
+frame, almost all of them for positions computed a frame earlier a hair's
+breadth away. `TrailSampler` evaluates the ephemeris on a fixed grid at the
+trail's own sample spacing instead, keeps each planet's window of it, and
+blends every sample from its four grid neighbours. The window slides ~4 days a
+frame against Mercury's ~1.1-day spacing, so about seven grid points a frame
+are new, across all eight planets.
 
-The one substantial saving left is a per-planet ring buffer for the trails: the
-window slides ~2 simulated days a frame while Mercury's sample spacing is 1.1
-days, so ~8 of the 2,320 evaluations are genuinely new. That would remove
-~0.95 ms — worth doing only if the frame budget ever becomes a problem, since
-it trades a pure function for a cache.
+The samples all sit at the same fraction of the way between grid points, so
+one set of Catmull-Rom weights serves the whole trail, and only the
+Sun-relative orbit is interpolated — the drift is linear and added back
+exactly. The error is 3e-5 of the orbit's radius, a few thousandths of a pixel
+and well inside the sag of the straight segments the ribbon is drawn with;
+`TrailSamplerTests` holds it to the direct computation for every preset.
+
+`SolarSystemApp --bench` (`make bench SAVER=solar-system`) prints both. At
+3456x2234 on an M1 Pro:
+
+| | per frame | of a core at 30fps |
+|---|---|---|
+| ephemeris at every sample, as it was | 0.96 ms | 2.9% |
+| the whole scene update now | 0.23 ms | 0.7% |
+| SceneKit's own pass, on the GPU | 1.5 ms | 4.4% of the GPU |
+
+The update runs on SceneKit's rendering thread, and is the only thing that
+touches the renderer: a resize on the main thread leaves the new aspect ratio
+for the render thread to pick up, rather than calling into renderer state the
+render thread may be halfway through.
 
 ## Notes on macOS screensavers
 
@@ -257,8 +275,12 @@ it trades a pure function for a cache.
   helper. Nothing here touches the network or reads files at runtime —
   astronomy-engine is pure computation with no ephemeris data files, which
   sidesteps the sandbox entirely.
-- SceneKit drives its own display link, so `animateOneFrame()` is deliberately
-  empty; `animationTimeInterval` is set slow so the two loops don't fight.
+- SceneKit drives its own display link, so `animateOneFrame()` does no drawing;
+  `animationTimeInterval` is set slow so the two loops don't fight, and each
+  tick only checks that SceneKit should still be playing at all — not while
+  the displays are asleep, and at half rate in Low Power Mode. The host never
+  calls `stopAnimation()` on its own any more; see "The host never stops a
+  screensaver" in NOTES.md for what the saver does instead.
 - System Settings creates a *second* live instance for the preview thumbnail.
   `isPreview` drops trail samples to 72 and disables MSAA.
 - The System Settings grid also wants `thumbnail.png` and `thumbnail@2x.png` in

@@ -8,10 +8,11 @@ import VortexCore
 ///
 /// Five passes: the first four accumulate additively into an offscreen texture,
 /// and the fifth resolves that to the target with chromatic aberration and a
-/// vignette. Nothing here walks the particle field — it lives in two immutable
-/// buffers uploaded once, and the shaders evaluate each particle's position from
-/// the clock. The only per-frame upload is a few dozen bytes of uniforms, plus
-/// lightning geometry on the rare frames a bolt is alive.
+/// vignette. Nothing here walks the particle field — it lives in two buffers,
+/// uploaded once and then again only every ten minutes when the scene rebases its
+/// clock, and the shaders evaluate each particle's position from the clock. The
+/// only per-frame upload is a few dozen bytes of uniforms, plus lightning
+/// geometry on the rare frames a bolt is alive.
 public final class VortexRenderer {
 
     /// Fraction of the target's resolution the scene is rendered at.
@@ -37,8 +38,11 @@ public final class VortexRenderer {
 
     /// One optional per set, so "there is a buffer" and "there is something in
     /// it" cannot disagree.
-    private let streaks: (buffer: MTLBuffer, count: Int)?
-    private let sprites: (buffer: MTLBuffer, count: Int)?
+    private var streaks: (buffer: MTLBuffer, count: Int)?
+    private var sprites: (buffer: MTLBuffer, count: Int)?
+    /// Which of the scene's particle sets the buffers hold. The scene replaces
+    /// its set every few minutes to keep its clock precise.
+    private var particleGeneration = 0
     /// Two triangles over four corners, shared by every streak instance.
     private let streakIndices: MTLBuffer
 
@@ -177,6 +181,13 @@ public final class VortexRenderer {
     /// The caller owns the command buffer so the on-screen path can present a
     /// drawable on the same submission, while tests can simply wait for it.
     public func render(scene: VortexScene, to target: MTLTexture, in commandBuffer: MTLCommandBuffer) {
+        if scene.particleGeneration != particleGeneration {
+            // Fresh buffers rather than overwriting these: a frame still in
+            // flight may be reading them, and holds them until it is done.
+            streaks = VortexRenderer.buffer(device: device, scene.particles.streaks, label: "streaks")
+            sprites = VortexRenderer.buffer(device: device, scene.particles.sprites, label: "sprites")
+            particleGeneration = scene.particleGeneration
+        }
         var uniforms = SceneUniforms(scene: scene, sceneScale: VortexRenderer.sceneScale)
 
         let sceneTexture = offscreenTexture(matching: target)

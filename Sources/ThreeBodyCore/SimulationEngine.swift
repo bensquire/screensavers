@@ -254,7 +254,11 @@ public final class SimulationEngine {
             playbackRate = 1.0
             return
         }
-        guard camera.worldPerPoint > 0 else { return }
+        // On a scene's first frame the camera still holds the previous scene's
+        // zoom — this runs before it is framed — and a speed measured against a
+        // scale a hundred times off seeds the smoothing with a pace that takes
+        // seconds to unwind.
+        guard camera.isFramed, camera.worldPerPoint > 0 else { return }
 
         // Root-mean-square speed across the bodies, not the maximum. A
         // figure-eight's fastest body at the crossing is about four times the

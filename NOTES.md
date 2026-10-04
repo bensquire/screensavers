@@ -38,7 +38,7 @@ which is what a missing or stale `.metallib` used to look like.
 make list                      # which savers exist
 make build   SAVER=three-body  # build/<saver>/<Name>.saver, ad-hoc signed
 make verify  SAVER=three-body  # load the built bundle for real and draw a frame
-make bench   SAVER=three-body  # time the renderer (release build, fixed seed)
+make bench   SAVER=three-body  # what a frame costs, CPU and GPU (release build)
 make install SAVER=three-body  # build and install to ~/Library/Screen Savers
 make test                      # every saver's tests
 make lint
@@ -96,6 +96,52 @@ sheet code line for line and behaved differently purely on selection order —
 and there is nothing a `.saver` bundle can do about it. Quitting System
 Settings (&#8984;Q) and reopening with the target screensaver selected first is
 the only workaround.
+
+## The host never stops a screensaver
+
+Third-party savers run inside `legacyScreenSaver`, and — widely reported since
+macOS 14, and seen here on 26.6 — it gets the lifecycle wrong in a way that costs
+real energy: when the screensaver is dismissed
+it neither calls `stopAnimation()` nor releases the view. Every session's views
+stay alive, timers still firing, in a process that outlives them by weeks, and the
+next session simply gets new ones.
+
+How bad that is was measured on the machine these were written on. One host had
+been up for 21 days, holding 79 Solar System views and 42 Three-Body ones,
+127 animation timers, 79 SceneKit display-link threads and 22.8 GB — 13.8 GB of it
+GPU memory. One of those Solar System views was still rendering, at 91% of a core,
+with nothing on screen.
+
+So `SaverKit`'s `SaverLifecycle` stands in for what the host no longer does, and
+every saver uses it:
+
+- **It stops on `com.apple.screensaver.willstop`**, the distributed notification
+  the system still posts as a session ends. Not for the System Settings
+  thumbnail, which isn't part of a session and would be left as a dead tile.
+- **Stopping gives the GPU back.** Each saver tears down its Metal or SceneKit
+  view in `stopAnimation()` (Three-Body drops its full-screen backdrop) and
+  rebuilds it in `startAnimation()`. The host still leaks the view itself, but
+  what it keeps is small and idle.
+- **Nothing is drawn while the displays sleep.** A screensaver routinely
+  outlasts the display-sleep timer, and nothing else stops it rendering into a
+  powered-down panel all night. The animation timer drops to one tick every
+  five seconds as well, rather than waking the processor thirty times a second
+  to do nothing.
+- **Low Power Mode halves the frame rate**, since that is the user saying outright
+  that energy matters more than smoothness.
+
+`make verify` stops and restarts every saver and checks that it draws again,
+because tearing down on stop makes the restart path one that nothing else
+exercises.
+
+To see whether a host is still running from before these changes:
+
+```sh
+ps -Ao pid,etime,%cpu,rss,command | grep '[l]egacyScreenSaver'
+```
+
+Killing it is harmless — the system starts a fresh one the next time the
+screensaver runs, and `make install` kills it anyway.
 
 ## Layout
 

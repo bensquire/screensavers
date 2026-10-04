@@ -25,7 +25,7 @@ final class RenderTests: XCTestCase {
         }
         let pipeline = try device.makeComputePipelineState(function: probe)
 
-        let slots = 8
+        let slots = 10
         guard
             let out = device.makeBuffer(
                 length: MemoryLayout<UInt32>.stride * slots, options: .storageModeShared),
@@ -70,6 +70,14 @@ final class RenderTests: XCTestCase {
         XCTAssertEqual(
             Int(reported[6]), MemoryLayout<AccumulateUniforms>.offset(of: \.sharpen))
         XCTAssertEqual(Int(reported[7]), MemoryLayout<PostUniforms>.stride)
+        // The last fields of each: a field present on one side only can hide in
+        // trailing padding, where the sizes above would still agree.
+        XCTAssertEqual(
+            Int(reported[8]), MemoryLayout<MarchUniforms>.offset(of: \.checker),
+            "MarchUniforms.checker is at a different offset")
+        XCTAssertEqual(
+            Int(reported[9]), MemoryLayout<AccumulateUniforms>.offset(of: \.checker),
+            "AccumulateUniforms.checker is at a different offset")
     }
 
     // MARK: - Drawing

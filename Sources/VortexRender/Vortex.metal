@@ -119,6 +119,8 @@ static inline float2 projectParticle(
 static inline float particleAlpha(Particle p, constant SceneUniforms &u, float z) {
     float farFade = clamp((u.zFar - z) / (u.zFar * 0.4), 0.0, 1.0);
     float nearFade = z < (u.zNear + 0.25) ? clamp((z - u.zNear) / 0.25, 0.0, 1.0) : 1.0;
+    // 0.004 is Particle.twinkleRatePerMs: rebasing the clock folds it into
+    // twinklePhase, so the two must change together.
     float twinkle = 0.78 + 0.22 * sin(u.particleTime * 0.004 + p.twinklePhase);
     return p.brightness * farFade * nearFade * twinkle;
 }

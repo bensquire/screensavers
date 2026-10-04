@@ -19,6 +19,9 @@ public enum SceneVetting {
         let survivedFor: Double
         /// True if it made it to the horizon without collision or escape.
         let survivedHorizon: Bool
+        /// True if the step budget ran out first, so all that is known is that
+        /// it lasted `survivedFor`.
+        let exhaustedBudget: Bool
         /// Integration steps consumed, so a caller trying several candidates
         /// can bound the total rather than the individual cost.
         let stepsUsed: Int
@@ -61,15 +64,19 @@ public enum SceneVetting {
                 return Outcome(
                     survivedFor: system.time - start,
                     survivedHorizon: false,
+                    exhaustedBudget: false,
                     stepsUsed: stepBudget - stepsRemaining)
             }
         }
-        // Running out of budget is not a verdict either way; treat an
-        // unfinished candidate as acceptable rather than rejecting it for being
-        // expensive to check.
+        // Running out of budget is not a verdict either way. It is reported as
+        // such rather than as a pass: the caller shares one budget across
+        // several candidates, and a pass would wave through a late candidate
+        // that was handed a few steps and checked for none of its horizon.
+        let reached = system.time >= end
         return Outcome(
             survivedFor: system.time - start,
-            survivedHorizon: true,
+            survivedHorizon: reached,
+            exhaustedBudget: !reached,
             stepsUsed: stepBudget - stepsRemaining)
     }
 

@@ -61,11 +61,27 @@ public final class ConfigureSheetController: NSObject {
         super.init()
     }
 
-    public private(set) lazy var window: NSWindow = makeWindow()
+    /// A fresh sheet each time it is asked for, showing the settings as they are now.
+    ///
+    /// Built once and shown again, a sheet carries whatever it showed last time — a
+    /// value dragged and then cancelled, or one saved since by another instance —
+    /// into the next commit. And the host can dismiss it its own way, leaving a
+    /// window that has already been ended. Solar System's sheet is rebuilt for the
+    /// same reasons.
+    public var window: NSWindow {
+        working = store.settings
+        let window = makeWindow()
+        shown = window
+        return window
+    }
+
+    private var shown: NSWindow?
 
     // MARK: - Construction
 
     private func makeWindow() -> NSWindow {
+        modeButtons = []
+        sliderControls = []
         let sheet = OptionsSheet(
             title: "Three-Body Problem",
             subtitle: "Newtonian gravity, integrated with a "
@@ -204,11 +220,11 @@ public final class ConfigureSheetController: NSObject {
     }
 
     @objc private func cancel(_ sender: Any?) {
-        working = store.settings
         close()
     }
 
     private func close() {
-        OptionsSheet.close(window)
+        if let shown { OptionsSheet.close(shown) }
+        shown = nil
     }
 }

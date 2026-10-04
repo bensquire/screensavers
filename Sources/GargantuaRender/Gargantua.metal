@@ -7,8 +7,10 @@
 //
 //  Six passes:
 //
-//    march    the geodesic integration, at render scale, into an HDR buffer
-//    taa      reproject the previous frame and accumulate into it
+//    march    the geodesic integration, at render scale, into an HDR buffer —
+//             half the pixels each frame, in a checkerboard that alternates
+//    taa      fill in the unmarched half, reproject the previous frame and
+//             accumulate into it
 //    bright   threshold for bloom
 //    down/up  the bloom pyramid
 //    streak   optional anamorphic smear
@@ -81,6 +83,7 @@ struct MarchUniforms {
     float stars;
     float nebula;
     float flare;
+    float checker;               // which half of the checkerboard this frame marches, 0 or 1
 };
 
 struct AccumulateUniforms {
@@ -98,6 +101,7 @@ struct AccumulateUniforms {
     float clipK;
     float valid;
     float sharpen;
+    float checker;               // as MarchUniforms.checker, for the same frame
 };
 
 struct BrightUniforms {
@@ -570,7 +574,13 @@ fragment float4 march_fragment(
     texture3d<float> noise [[texture(0)]],
     sampler noiseSampler [[sampler(0)]])
 {
-    float2 px = glPixel(in.position, u.resolution);
+    // The target is half as wide as the march resolution: texel x stands for
+    // pixel 2x on rows of one parity and 2x + 1 on the others, alternating every
+    // frame, so each pixel is marched every other frame.
+    float4 position = in.position;
+    uint row = uint(position.y);
+    position.x = float(2 * uint(position.x) + ((row + uint(u.checker)) & 1u)) + 0.5;
+    float2 px = glPixel(position, u.resolution);
     float3 rd = rayDirection(px + u.jitter, u.resolution, u.camRight, u.camUp, u.camFwd, u.scale);
 
     float3 acc = float3(0.0);
@@ -670,8 +680,10 @@ fragment float4 march_fragment(
         }
     }
 
-    // Derivatives are taken here, after control flow has reconverged.
-    float spread = max(length(dfdx(dirEsc)), length(dfdy(dirEsc)));
+    // Derivatives are taken here, after control flow has reconverged. Across the
+    // checkerboard, horizontal neighbours in the quad are two pixels apart and
+    // vertical ones a diagonal, so each is scaled back to one pixel's worth.
+    float spread = max(length(dfdx(dirEsc)) * 0.5, length(dfdy(dirEsc)) * M_SQRT1_2_F);
     spread = clamp(spread, 1.0e-5, 1.5);
 
     float3 col = acc;
@@ -693,6 +705,14 @@ static inline float3 untonemapForBlend(float3 c) {
     return c / max(1.0e-4, 1.0 - max(max(c.r, c.g), c.b));
 }
 
+// The marched sample nearest full-resolution pixel `q`. Each texel holds one of a
+// horizontal pair, so asking for either pixel of the pair returns whichever was
+// marched — exact for the marched one, and the nearest sample at the border.
+static inline float4 marched(texture2d<float> current, int2 q, int2 size) {
+    q = clamp(q, int2(0), size - 1);
+    return current.read(uint2(q.x >> 1, q.y));
+}
+
 fragment float4 accumulate_fragment(
     FullscreenOut in [[stage_in]],
     constant AccumulateUniforms &u [[buffer(0)]],
@@ -701,8 +721,43 @@ fragment float4 accumulate_fragment(
     sampler linearSampler [[sampler(0)]])
 {
     float2 px = glPixel(in.position, u.resolution);
-    float2 uv = in.position.xy / u.resolution;
-    float4 currentSample = current.sample(linearSampler, uv);
+    int2 p = int2(in.position.xy);
+    int2 size = int2(u.resolution);
+    // Whether this pixel was marched this frame. Within its 3x3 neighbourhood the
+    // marched pixels are those whose offset has this parity: the centre and its
+    // diagonals around a marched pixel, the four edge neighbours around one that
+    // was not.
+    bool fresh = ((p.x + p.y + int(u.checker)) & 1) == 0;
+    int parity = fresh ? 0 : 1;
+
+    // The marched neighbourhood is needed for variance clipping anyway, so the
+    // unsharp mask that recovers detail lost to upscaling rides along for free
+    // here at render resolution instead of costing taps at native. An unmarched
+    // pixel also takes its colour from it — the mean of its four neighbours — and
+    // the nearest of their depths for the reprojection, so a foreground edge is
+    // not pushed into the sky.
+    float3 m1 = float3(0.0), m2 = float3(0.0), around = float3(0.0);
+    float count = 0.0, nearest = 1.0e5;
+    float4 currentSample = float4(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            if (((x + y) & 1) != parity) continue;
+            float4 n = marched(current, p + int2(x, y), size);
+            float3 s = tonemapForBlend(n.rgb);
+            m1 += s;
+            m2 += s * s;
+            count += 1.0;
+            if (x == 0 && y == 0) {
+                currentSample = n;
+            } else {
+                around += n.rgb;
+                nearest = min(nearest, n.a);
+            }
+        }
+    }
+    m1 /= count;
+    m2 /= count;
+    if (!fresh) currentSample = float4(around / count, nearest);
     float3 cur = currentSample.rgb;
 
     // Reconstruct where this pixel's light came from and re-project that world
@@ -713,21 +768,6 @@ fragment float4 accumulate_fragment(
     float3 rel = (u.camPos - u.prevPos) + rd * currentSample.a;
     float3 c = float3(dot(rel, u.prevRight), dot(rel, u.prevUp), dot(rel, u.prevFwd));
 
-    // The 3x3 neighbourhood is needed for variance clipping anyway, so the
-    // unsharp mask that recovers detail lost to upscaling rides along for free
-    // here at render resolution instead of costing nine taps at native.
-    float3 m1 = float3(0.0), m2 = float3(0.0);
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            float3 s = tonemapForBlend(
-                current.sample(linearSampler, uv + float2(float(x), float(y)) / u.resolution).rgb);
-            m1 += s;
-            m2 += s * s;
-        }
-    }
-    m1 /= 9.0;
-    m2 /= 9.0;
-
     float3 outc = cur;
     if (c.z > 1.0e-4 && u.valid > 0.5) {
         float2 pn = c.xy / (c.z * u.scale);
@@ -737,6 +777,14 @@ fragment float4 accumulate_fragment(
             float3 hs = clamp(
                 tonemapForBlend(history.sample(linearSampler, puv).rgb),
                 m1 - sd * u.clipK, m1 + sd * u.clipK);
+            // The same weight for every pixel, marched or not. Holding the ones
+            // that were not marched on their history alone, and doubling the
+            // weight of the ones that were, looks like it should preserve more
+            // detail — but it leaves the two halves a frame apart in phase, and
+            // anything moving shows the checkerboard as a fine mesh. Blending
+            // both towards their best estimate this frame costs a little
+            // sharpness and shows no pattern at all, and frame-to-frame change
+            // measures within 10% of marching every pixel.
             outc = untonemapForBlend(mix(hs, tonemapForBlend(cur), u.alpha));
         }
     }
@@ -898,4 +946,6 @@ kernel void uniform_layout_probe(
     out[5] = (uint)((const device char *)&accumulate->resolution - a);
     out[6] = (uint)((const device char *)&accumulate->sharpen - a);
     out[7] = (uint)sizeof(PostUniforms);
+    out[8] = (uint)((const device char *)&march->checker - m);
+    out[9] = (uint)((const device char *)&accumulate->checker - a);
 }

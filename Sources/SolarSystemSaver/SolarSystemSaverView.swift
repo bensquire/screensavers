@@ -56,14 +56,35 @@ public final class SolarSystemSaverView: ScreenSaverView {
 
     private var sceneView: SolarSystemSceneView?
     private var configWindow: NSWindow?
+    private var lifecycle: SaverLifecycle?
 
     public override init?(frame: NSRect, isPreview: Bool) {
         super.init(frame: frame, isPreview: isPreview)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.black.cgColor
+
         // SceneKit drives its own display link, so this timer only needs to exist, not
         // to be fast. A slow interval keeps the legacyScreenSaver host quiet.
-        animationTimeInterval = 1.0 / 5.0
-        wantsLayer = true
+        let lifecycle = SaverLifecycle(view: self, frameInterval: 1.0 / 5.0) {
+            [weak self] in self?.stopAnimation()
+        }
+        lifecycle.onChange = { [weak self] in self?.applyPacing() }
+        self.lifecycle = lifecycle
+        installSceneView()
+    }
 
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("SolarSystemSaverView is instantiated by ScreenSaverEngine, not a nib")
+    }
+
+    /// Builds the scene, starting from today's date, unless one is already up.
+    ///
+    /// Parked rather than playing: a playing `SCNView` runs its own display link
+    /// the moment it is in a window, whatever the host has or has not asked for,
+    /// so it waits for `startAnimation` like every other saver here.
+    private func installSceneView() {
+        guard sceneView == nil else { return }
         // System Settings creates a second live instance for its preview thumbnail.
         let quality: RenderQuality = isPreview ? .preview : .full
         var config = Self.scalePreset.config()
@@ -75,28 +96,43 @@ public final class SolarSystemSaverView: ScreenSaverView {
         )
         Self.scalePreset.apply(to: renderer)
         let view = SolarSystemSceneView(renderer: renderer, frame: bounds, quality: quality)
+        view.isPlaying = false
         addSubview(view)
         sceneView = view
     }
 
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("SolarSystemSaverView is instantiated by ScreenSaverEngine, not a nib")
+    /// Plays only while there is someone to see it, at the rate the lifecycle asks for.
+    private func applyPacing() {
+        guard let sceneView, let lifecycle else { return }
+        let playing = isAnimating && !lifecycle.isSuspended
+        if sceneView.isPlaying != playing { sceneView.isPlaying = playing }
+        let fps = Int(lifecycle.framesPerSecond)
+        if sceneView.preferredFramesPerSecond != fps { sceneView.preferredFramesPerSecond = fps }
     }
 
     // ScreenSaverView's timer. SceneKit already redraws on its own display link, so
-    // there is nothing to do per tick — overriding it empty avoids the default
-    // implementation's needsDisplay churn on top of SceneKit's own loop.
-    public override func animateOneFrame() {}
+    // there is no drawing to do per tick — only checking that it should still be
+    // drawing at all, which is cheap at this interval.
+    public override func animateOneFrame() {
+        applyPacing()
+    }
 
     public override func startAnimation() {
         super.startAnimation()
-        sceneView?.isPlaying = true
+        installSceneView()
+        applyPacing()
     }
 
+    /// Takes the whole scene down, not just the display link. An `SCNView` with HDR,
+    /// bloom and 4x multisampling holds well over a hundred megabytes of render
+    /// targets at Retina resolution, and the host keeps a stopped view alive
+    /// indefinitely — see `SaverLifecycle`. The next start builds a fresh one, from
+    /// that day's date.
     public override func stopAnimation() {
         super.stopAnimation()
         sceneView?.isPlaying = false
+        sceneView?.removeFromSuperview()
+        sceneView = nil
     }
 
     public override func resizeSubviews(withOldSize oldSize: NSSize) {

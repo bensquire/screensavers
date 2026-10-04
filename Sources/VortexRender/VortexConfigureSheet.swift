@@ -23,10 +23,10 @@ public final class VortexConfigureSheet: NSObject {
             format: { String(format: "%.0f%%", $0 * 100) }),
     ]
 
-    private lazy var sliders = SliderGrid<VortexSettings>(specs: Self.sliderSpecs) {
-        [weak self] keyPath, value in
-        self?.working[keyPath: keyPath] = value
-    }
+    /// The grid in the sheet now showing. Held here because it is its sliders'
+    /// target, and a control does not retain its target.
+    private var sliders: SliderGrid<VortexSettings>?
+    private var shown: NSWindow?
 
     public init(store: VortexSettingsStore, onCommit: @escaping (VortexSettings) -> Void) {
         self.store = store
@@ -35,7 +35,19 @@ public final class VortexConfigureSheet: NSObject {
         super.init()
     }
 
-    public private(set) lazy var window: NSWindow = makeWindow()
+    /// A fresh sheet each time it is asked for, showing the settings as they are now.
+    ///
+    /// Built once and shown again, a sheet carries whatever it showed last time — a
+    /// value dragged and then cancelled, or one saved since by another instance —
+    /// into the next commit. And the host can dismiss it its own way, leaving a
+    /// window that has already been ended. Solar System's sheet is rebuilt for the
+    /// same reasons.
+    public var window: NSWindow {
+        working = store.settings
+        let window = makeWindow()
+        shown = window
+        return window
+    }
 
     private func makeWindow() -> NSWindow {
         let sheet = OptionsSheet(
@@ -44,7 +56,12 @@ public final class VortexConfigureSheet: NSObject {
                 + "down the wall.")
 
         let grid = OptionsSheet.grid()
+        let sliders = SliderGrid<VortexSettings>(specs: Self.sliderSpecs) {
+            [weak self] keyPath, value in
+            self?.working[keyPath: keyPath] = value
+        }
         sliders.install(in: grid, settings: working)
+        self.sliders = sliders
         sheet.add(grid, stretched: true)
         sheet.addSeparator()
 
@@ -73,12 +90,16 @@ public final class VortexConfigureSheet: NSObject {
     @objc private func commit(_ sender: Any?) {
         store.settings = working
         onCommit(store.settings)
-        OptionsSheet.close(window)
+        close()
     }
 
     @objc private func cancel(_ sender: Any?) {
-        working = store.settings
-        sliders.refresh(working)
-        OptionsSheet.close(window)
+        close()
+    }
+
+    private func close() {
+        if let shown { OptionsSheet.close(shown) }
+        shown = nil
+        sliders = nil
     }
 }

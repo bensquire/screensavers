@@ -189,16 +189,10 @@ func downsample(_ image: CGImage, to size: CGSize) -> CGImage? {
 /// affordable. Wall-clock time here would be quantised by nothing in
 /// particular, since these frames are submitted back to back.
 func runBenchmark() -> Bool {
-    let args = CommandLine.arguments
-    guard args.contains("--bench") else { return false }
-
-    func value(_ name: String, _ fallback: Int) -> Int {
-        guard let i = args.firstIndex(of: name), i + 1 < args.count else { return fallback }
-        return Int(args[i + 1]) ?? fallback
-    }
-    let width = value("--width", 2560)
-    let height = value("--height", 1600)
-    let frames = value("--frames", 90)
+    guard CommandLine.arguments.contains("--bench") else { return false }
+    let width = Benchmark.argument("--width", default: 2560)
+    let height = Benchmark.argument("--height", default: 1600)
+    let frames = Benchmark.argument("--frames", default: 90)
 
     guard let device = MTLCreateSystemDefaultDevice() else { return true }
     print("device: \(device.name)   output: \(width)x\(height)   \(frames) frames each\n")
@@ -225,31 +219,26 @@ func runBenchmark() -> Bool {
             guard let buffer = renderer.makeCommandBuffer() else { continue }
             renderer.render(
                 scene: scene, deltaTime: FrameClock.frameInterval, to: target, in: buffer)
-            buffer.commit()
-            buffer.waitUntilCompleted()
-            let seconds = buffer.gpuEndTime - buffer.gpuStartTime
-            if adaptive { renderer.noteFrameCost(gpuSeconds: seconds) }
+            let ms = Benchmark.gpuMilliseconds(committing: buffer)
+            if adaptive { renderer.noteFrameCost(gpuSeconds: ms / 1000) }
             // The opening frames pay for pipeline warm-up and the first
             // accumulation, which is not what a steady-state frame costs. When
             // the controller is running, only the tail is at its settled scale.
             let warmup = adaptive ? frames - 120 : 10
-            if frame >= warmup { samples.append(seconds * 1000) }
+            if frame >= warmup { samples.append(ms) }
         }
-        samples.sort()
-        guard !samples.isEmpty else { return (0, 0, renderer.renderScale) }
-        return (
-            samples[samples.count / 2],
-            samples[Int(Double(samples.count) * 0.95)],
-            renderer.renderScale
-        )
+        let (median, worst) = Benchmark.summary(samples)
+        return (median, worst, renderer.renderScale)
     }
 
     let frameMs = FrameClock.frameInterval * 1000
-    print("render   march      GPU ms/frame        of a \(Int(frameMs)) ms frame")
-    print("scale    pixels     median   p95")
-    for scale in [0.30, 0.40, 0.55, 0.70, 0.85, 1.00] {
+    // Checkerboarded: each frame marches half the pixels at its render scale.
+    let marchedFraction = 0.5
+    print("render   marched    GPU ms/frame        of a \(Int(frameMs)) ms frame")
+    print("scale    a frame    median   p95")
+    for scale in [0.25, 0.30, 0.40, 0.55, 0.70, 0.85, 1.00] {
         let result = measure(scale: scale, frames: frames, adaptive: false)
-        let marchPixels = Double(width * height) * scale * scale / 1_000_000
+        let marchPixels = Double(width * height) * scale * scale * marchedFraction / 1_000_000
         print(
             String(
                 format: "%.2f     %5.2fM     %6.2f  %6.2f     %3.0f%%",

@@ -32,6 +32,36 @@ public struct Particle: Equatable {
     public var kind: Float
 }
 
+extension Particle {
+
+    /// Twinkle rate, in radians per millisecond of particle clock. The shader
+    /// reads the same constant (`particleAlpha` in Vortex.metal); it is named here
+    /// because rebasing has to fold it into `twinklePhase`.
+    public static let twinkleRatePerMs = 0.004
+
+    /// This particle with `ms` of particle clock folded into its constants: drawn
+    /// at clock `t`, it is where the original would be at clock `t + ms`.
+    ///
+    /// Every quantity the shaders derive from the clock is linear in it — depth
+    /// wraps modulo the tunnel's length, and the rest are angles — so the fold is
+    /// exact up to the rounding of one `Float`.
+    func advanced(byMs ms: Double) -> Particle {
+        let turn = 2 * Double.pi
+        var p = self
+        // A floor modulo, as the shader's GLSL-style mod is, so the depth lands
+        // where the shader would have put it.
+        p.z0 = Float(
+            Tunnel.zNear
+                + (Double(z0) - ms * Double(speed) - Tunnel.zNear).wrapped(modulo: Tunnel.zRange))
+        p.angle = Float((Double(angle) + Double(swirl) * ms).wrapped(modulo: turn))
+        p.wobblePhase = Float(
+            (Double(wobblePhase) + Double(wobbleFrequency) * ms).wrapped(modulo: turn))
+        p.twinklePhase = Float(
+            (Double(twinklePhase) + Particle.twinkleRatePerMs * ms).wrapped(modulo: turn))
+        return p
+    }
+}
+
 public enum ParticleKind {
     public static let streak: Float = 0
     public static let glint: Float = 1
@@ -92,5 +122,17 @@ public struct ParticleSet {
 
         self.streaks = streaks
         self.sprites = sprites
+    }
+
+    private init(streaks: [Particle], sprites: [Particle]) {
+        self.streaks = streaks
+        self.sprites = sprites
+    }
+
+    /// The field with `ms` of particle clock folded in. See `Particle.advanced`.
+    func advanced(byMs ms: Double) -> ParticleSet {
+        ParticleSet(
+            streaks: streaks.map { $0.advanced(byMs: ms) },
+            sprites: sprites.map { $0.advanced(byMs: ms) })
     }
 }

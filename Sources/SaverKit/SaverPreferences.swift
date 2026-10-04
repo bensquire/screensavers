@@ -27,9 +27,15 @@ public struct SaverPreferences {
 
     private func fallbackKey(_ key: String) -> String { fallbackPrefix + key }
 
-    /// Registers defaults with both stores, so a first run has values everywhere.
+    /// Registers defaults with the mirror only.
+    ///
+    /// Registering them with the module store as well — which this once did — made
+    /// the mirror unreachable: a registered key always has a value, so every read
+    /// below found one in the module store and stopped there, and a refused ByHost
+    /// write came back as the default rather than as the mirrored choice. Lookups
+    /// fall through to the mirror, so a default registered there still answers when
+    /// neither store holds a choice.
     public func register(defaults values: [String: Any]) {
-        moduleDefaults?.register(defaults: values)
         var mirrored: [String: Any] = [:]
         for (key, value) in values { mirrored[fallbackKey(key)] = value }
         fallback.register(defaults: mirrored)

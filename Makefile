@@ -30,8 +30,8 @@ verify: build
 # pure compile-and-link. Regenerate after any change to how a scene looks.
 thumbnails:
 	@APP=$$(sed -n 's/^APP_PRODUCT="\(.*\)"$$/\1/p' savers/$(SAVER)/saver.conf); \
-	swift build -c release --product $$APP; \
-	.build/release/$$APP --render savers/$(SAVER)/Resources/thumbnail.png    --width 90  --height 58  --at 40; \
+	swift build -c release --product $$APP && \
+	.build/release/$$APP --render savers/$(SAVER)/Resources/thumbnail.png    --width 90  --height 58  --at 40 && \
 	.build/release/$$APP --render savers/$(SAVER)/Resources/thumbnail@2x.png --width 180 --height 116 --at 40
 
 # Times the renderer. Release-mode is not optional: the three-body numerics are
@@ -40,7 +40,7 @@ thumbnails:
 #   make bench SAVER=gargantua ARGS="--width 3840 --height 2160"
 bench:
 	@APP=$$(sed -n 's/^APP_PRODUCT="\(.*\)"$$/\1/p' savers/$(SAVER)/saver.conf); \
-	swift build -c release --product $$APP; \
+	swift build -c release --product $$APP && \
 	.build/release/$$APP --bench $(ARGS)
 
 

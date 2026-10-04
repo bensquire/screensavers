@@ -60,7 +60,8 @@ let package = Package(
             name: "ssverify", dependencies: ["SolarSystemCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
         .executableTarget(
-            name: "SolarSystemApp", dependencies: ["SolarSystemRender", "SolarSystemCore"],
+            name: "SolarSystemApp",
+            dependencies: ["SolarSystemRender", "SolarSystemCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
         .target(
@@ -108,6 +109,9 @@ let package = Package(
             name: "GargantuaApp", dependencies: ["GargantuaRender", "GargantuaCore", "SaverKit"],
             swiftSettings: [.swiftLanguageMode(.v5)]),
 
+        .testTarget(
+            name: "SaverKitTests", dependencies: ["SaverKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(
             name: "SolarSystemCoreTests",
             dependencies: ["SolarSystemCore", "SolarSystemRender"],

@@ -37,11 +37,14 @@ BUNDLE="$BUILD/$BUNDLE_NAME.saver"
 ARCHS="${ARCHS:-arm64 x86_64}"
 CONFIG="${CONFIG:-release}"
 
+# Whole-module in both: each module is compiled with one -c and one -o, which
+# swiftc only accepts when it is producing a single object. Without it a debug
+# build failed on the first module with more than one file.
 if [ "$CONFIG" = "release" ]; then
   SWIFT_OPT="-O -wmo"
   C_OPT="-O2"
 else
-  SWIFT_OPT="-Onone"
+  SWIFT_OPT="-Onone -wmo -g"
   C_OPT="-O0 -g"
 fi
 
