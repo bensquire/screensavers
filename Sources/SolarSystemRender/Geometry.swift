@@ -46,12 +46,12 @@ enum Geometry {
     /// Unlit and depth-transparent. Trails and stars should glow through each other
     /// rather than occlude — that layered look is most of the reference image.
     ///
-    /// Both variants are stateless, so one shared instance serves every geometry;
-    /// SceneKit is happy for a material to be referenced from many.
+    /// The trails' additive variant is stateless, so one shared instance serves
+    /// every ribbon; SceneKit is happy for a material to be referenced from many.
+    /// The star field makes its own, because it carries a per-frame uniform.
     static let additive: SCNMaterial = unlitMaterial(blend: .add, doubleSided: true)
-    static let unlit: SCNMaterial = unlitMaterial(blend: .alpha, doubleSided: false)
 
-    private static func unlitMaterial(blend: SCNBlendMode, doubleSided: Bool) -> SCNMaterial {
+    static func unlitMaterial(blend: SCNBlendMode, doubleSided: Bool) -> SCNMaterial {
         let m = SCNMaterial()
         m.lightingModel = .constant
         m.diffuse.contents = NSColor.white

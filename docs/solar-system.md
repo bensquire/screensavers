@@ -139,9 +139,9 @@ Scripts/
 
 ## Tests
 
-`make test` runs 23 tests: the ephemeris against JPL Horizons fixtures, the
-galactic frame's invariants, the scale presets, and the interpolated trails
-against the ephemeris they stand in for. `make verify` goes further and loads
+`make test` runs 25 tests: the ephemeris against JPL Horizons fixtures, the
+galactic frame's invariants, the scale presets, the interpolated trails
+against the ephemeris they stand in for, and the star field never jumping. `make verify` goes further and loads
 the built bundle the way `ScreenSaverEngine` does — resolving the principal
 class, instantiating both the full-screen and preview views, and rendering a
 frame to prove the scene actually draws, before and after a stop and restart. CI runs both, on every
