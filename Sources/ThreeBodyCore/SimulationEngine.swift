@@ -301,7 +301,7 @@ public final class SimulationEngine {
     public func update(deltaTime rawDelta: Double, viewSize: (width: Double, height: Double)) {
         // A screensaver can be paused, or the machine can sleep; a huge delta
         // would try to integrate hours of dynamics in one frame.
-        let dt = min(max(rawDelta, 0), 1.0 / 20.0)
+        let dt = rawDelta.clamped(to: 0...(1.0 / 20.0))
         phaseTime += dt
         sceneRealTime += dt
 

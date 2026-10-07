@@ -14,9 +14,9 @@ import ThreeBodyRender
 /// argument is the only way to run them side by side on different modes.
 final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
-    private var window: NSWindow!
-    private var surface: SimulationSurfaceView!
-    private var configController: ConfigureSheetController!
+    private var window: NSWindow?
+    private var surface: SimulationSurfaceView?
+    private var configController: ConfigureSheetController?
     private let store = SettingsStore(
         defaults: SaverPreferences(moduleIdentifier: SettingsStore.bundleIdentifier))
 
@@ -36,7 +36,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
-        window = NSWindow(
+        let window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -53,12 +53,14 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.backgroundColor = .black
 
-        surface = SimulationSurfaceView(frame: frame, settings: settings)
+        let surface = SimulationSurfaceView(frame: frame, settings: settings)
         surface.autoresizingMask = [.width, .height]
         window.contentView = surface
+        self.window = window
+        self.surface = surface
 
         configController = ConfigureSheetController(store: store) { [weak self] settings in
-            self?.surface.engine.settings = settings
+            self?.surface?.engine.settings = settings
         }
 
         buildMenu()
@@ -95,11 +97,12 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showOptions() {
+        guard let window, let configController else { return }
         window.beginSheet(configController.window, completionHandler: nil)
     }
 
     @objc private func nextScene() {
-        surface.engine.advanceToNextScene()
+        surface?.engine.advanceToNextScene()
     }
 }
 
@@ -162,7 +165,12 @@ func renderThumbnail() -> Bool {
         FileHandle.standardError.write(Data("could not encode PNG\n".utf8))
         exit(1)
     }
-    try! png.write(to: URL(fileURLWithPath: path))
+    do {
+        try png.write(to: URL(fileURLWithPath: path))
+    } catch {
+        FileHandle.standardError.write(Data("could not write \(path): \(error)\n".utf8))
+        exit(1)
+    }
     print("wrote \(path) (\(Int(size.width))×\(Int(size.height)))")
     return true
 }

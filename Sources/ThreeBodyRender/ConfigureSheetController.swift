@@ -44,15 +44,19 @@ public final class ConfigureSheetController: NSObject {
             format: { String(format: "%.0f%%", $0 * 100) }),
     ]
 
-    private var accuracyPopUp: NSPopUpButton!
+    /// One on/off setting, in the order the checkboxes are shown; a checkbox's
+    /// `tag` is its index here.
+    private static let toggleSpecs: [(title: String, keyPath: WritableKeyPath<SimulationSettings, Bool>)] = [
+        ("Slow down through close encounters", \.adaptivePlayback),
+        ("Show readout (orbit name, energy drift)", \.showHUD),
+        ("Glow around bodies", \.showGlow),
+        ("Background stars", \.showStars),
+    ]
+
     /// Parallel to `sliderSpecs`; a slider's `tag` is its index here.
     private var sliderControls: [(slider: NSSlider, label: NSTextField)] = []
-    private var hudCheck: NSButton!
-    private var playbackCheck: NSButton!
-    private var glowCheck: NSButton!
-    private var starsCheck: NSButton!
     private var modeButtons: [NSButton] = []
-    private var modeExplanation: NSTextField!
+    private var modeExplanation: NSTextField?
 
     public init(store: SettingsStore, onCommit: @escaping (SimulationSettings) -> Void) {
         self.store = store
@@ -102,11 +106,12 @@ public final class ConfigureSheetController: NSObject {
             modeButtons.append(button)
             modeBox.addArrangedSubview(button)
         }
-        modeExplanation = NSTextField(wrappingLabelWithString: working.mode.explanation)
+        let modeExplanation = NSTextField(wrappingLabelWithString: working.mode.explanation)
         modeExplanation.font = NSFont.systemFont(ofSize: 11)
         modeExplanation.textColor = .secondaryLabelColor
         modeExplanation.preferredMaxLayoutWidth = OptionsSheet.bodyWidth
         modeBox.addArrangedSubview(modeExplanation)
+        self.modeExplanation = modeExplanation
         sheet.add(modeBox, stretched: true)
 
         sheet.addSeparator()
@@ -119,7 +124,7 @@ public final class ConfigureSheetController: NSObject {
         let column = OptionsSheet.labelColumnWidth(
             fitting: ["Integrator"] + Self.sliderSpecs.map(\.title))
 
-        accuracyPopUp = NSPopUpButton()
+        let accuracyPopUp = NSPopUpButton()
         accuracyPopUp.addItems(withTitles: Accuracy.allCases.map { $0.displayName })
         accuracyPopUp.selectItem(at: Accuracy.allCases.firstIndex(of: working.accuracy) ?? 1)
         accuracyPopUp.target = self
@@ -145,27 +150,13 @@ public final class ConfigureSheetController: NSObject {
         sheet.add(grid, stretched: true)
         sheet.addSeparator()
 
-        playbackCheck = NSButton(
-            checkboxWithTitle: "Slow down through close encounters",
-            target: self, action: #selector(toggleChanged(_:)))
-        playbackCheck.state = working.adaptivePlayback ? .on : .off
-        sheet.add(playbackCheck)
-
-        hudCheck = NSButton(
-            checkboxWithTitle: "Show readout (orbit name, energy drift)",
-            target: self, action: #selector(toggleChanged(_:)))
-        hudCheck.state = working.showHUD ? .on : .off
-        glowCheck = NSButton(
-            checkboxWithTitle: "Glow around bodies",
-            target: self, action: #selector(toggleChanged(_:)))
-        glowCheck.state = working.showGlow ? .on : .off
-        starsCheck = NSButton(
-            checkboxWithTitle: "Background stars",
-            target: self, action: #selector(toggleChanged(_:)))
-        starsCheck.state = working.showStars ? .on : .off
-        sheet.add(hudCheck)
-        sheet.add(glowCheck)
-        sheet.add(starsCheck)
+        for (index, toggle) in Self.toggleSpecs.enumerated() {
+            let check = NSButton(
+                checkboxWithTitle: toggle.title, target: self, action: #selector(toggleChanged(_:)))
+            check.tag = index
+            check.state = working[keyPath: toggle.keyPath] ? .on : .off
+            sheet.add(check)
+        }
 
         let window = sheet.makeWindow(
             title: "Three-Body Problem", target: self,
@@ -184,7 +175,7 @@ public final class ConfigureSheetController: NSObject {
         for button in modeButtons {
             button.state = button === sender ? .on : .off
         }
-        modeExplanation.stringValue = working.mode.explanation
+        modeExplanation?.stringValue = working.mode.explanation
     }
 
     @objc private func accuracyChanged(_ sender: NSPopUpButton) {
@@ -201,10 +192,8 @@ public final class ConfigureSheetController: NSObject {
     }
 
     @objc private func toggleChanged(_ sender: NSButton) {
-        working.adaptivePlayback = playbackCheck.state == .on
-        working.showHUD = hudCheck.state == .on
-        working.showGlow = glowCheck.state == .on
-        working.showStars = starsCheck.state == .on
+        guard sender.tag >= 0, sender.tag < Self.toggleSpecs.count else { return }
+        working[keyPath: Self.toggleSpecs[sender.tag].keyPath] = sender.state == .on
     }
 
     private func refreshLabels() {

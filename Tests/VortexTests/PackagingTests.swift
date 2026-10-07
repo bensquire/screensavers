@@ -31,16 +31,17 @@ final class PackagingTests: XCTestCase {
         return settings
     }
 
+    /// ShaderLibrary asks the bundle for "Vortex.metallib"; the build script names
+    /// the output from METAL_LIBRARY. If they or the source path drift, the
+    /// built saver draws nothing while every other test passes.
     func testTheBuildCompilesTheShaderTheLoaderLooksFor() throws {
         let conf = try saverConf()
 
-        // ShaderLibrary asks the bundle for "Vortex.metallib"; the build script
-        // names the output from METAL_LIBRARY. They have to be the same word.
         XCTAssertEqual(
             conf["METAL_LIBRARY"], ShaderLibrary.name,
             "saver.conf builds a differently-named metallib than ShaderLibrary loads")
 
-        let source = try XCTUnwrap(conf["METAL_SOURCES"])
+        let source = try XCTUnwrap(conf["METAL_SOURCES"], "saver.conf has no METAL_SOURCES")
         let path = Self.repositoryRoot.appendingPathComponent(source)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: path.path),
@@ -57,8 +58,11 @@ final class PackagingTests: XCTestCase {
         let store = VortexSettingsStore(
             defaults: SaverPreferences(moduleIdentifier: "test.vortex.sheet"))
         let window = VortexConfigureSheet(store: store, onCommit: { _ in }).window
-        XCTAssertEqual(window.frame.width, OptionsSheet.contentWidth, accuracy: 1)
-        XCTAssertLessThan(window.frame.height, 600, "too tall for a settings sheet")
+        XCTAssertEqual(
+            window.frame.width, OptionsSheet.contentWidth, accuracy: 1,
+            "the sheet is \(window.frame.width) pt wide")
+        XCTAssertLessThan(
+            window.frame.height, 600, "the sheet is \(window.frame.height) pt, too tall for a settings sheet")
         XCTAssertTrue(window.canBecomeKey, "a sheet that cannot become key never appears")
     }
 
@@ -92,25 +96,34 @@ final class PackagingTests: XCTestCase {
     /// fix only reached the sheets going through SliderGrid.
     @MainActor
     func testLabelColumnFitsItsTitles() {
-        XCTAssertEqual(OptionsSheet.labelColumnWidth(fitting: ["a"]), OptionsSheet.minimumLabelWidth)
+        XCTAssertEqual(
+            OptionsSheet.labelColumnWidth(fitting: ["a"]), OptionsSheet.minimumLabelWidth,
+            "a short title did not get the minimum column")
         let wide = OptionsSheet.labelColumnWidth(fitting: ["Doppler beaming"])
-        XCTAssertGreaterThan(wide, OptionsSheet.minimumLabelWidth)
+        XCTAssertGreaterThan(
+            wide, OptionsSheet.minimumLabelWidth, "a long title did not widen the column")
+        let needed = OptionsSheet.fieldLabel("Doppler beaming", width: nil).intrinsicContentSize.width
         XCTAssertGreaterThanOrEqual(
-            wide, OptionsSheet.fieldLabel("Doppler beaming", width: nil).intrinsicContentSize.width)
-        // Order must not matter.
+            wide, needed, "the column is \(wide) pt for a title that needs \(needed)")
         XCTAssertEqual(
             OptionsSheet.labelColumnWidth(fitting: ["a", "Doppler beaming"]),
-            OptionsSheet.labelColumnWidth(fitting: ["Doppler beaming", "a"]))
+            OptionsSheet.labelColumnWidth(fitting: ["Doppler beaming", "a"]),
+            "the column width depends on the titles' order")
     }
 
+    /// build-saver.sh compiles MODULES in the order given and links FRAMEWORKS;
+    /// a module out of order or a framework left out breaks only the bundle
+    /// build, which no other test runs.
     func testTheSaverIsBuiltFromTheModulesItNeeds() throws {
         let conf = try saverConf()
-        let modules = try XCTUnwrap(conf["MODULES"]).split(separator: " ").map(String.init)
-        // build-saver.sh compiles these in the order given, so a dependency
-        // listed after its dependent will not resolve.
-        XCTAssertEqual(modules, ["SaverCore", "SaverKit", "VortexCore", "VortexRender", "VortexSaver"])
+        let modules = try XCTUnwrap(conf["MODULES"], "saver.conf has no MODULES")
+            .split(separator: " ").map(String.init)
+        XCTAssertEqual(
+            modules, ["SaverCore", "SaverKit", "VortexCore", "VortexRender", "VortexSaver"],
+            "saver.conf's MODULES changed, or a dependency is listed after its dependent")
 
-        let frameworks = try XCTUnwrap(conf["FRAMEWORKS"]).split(separator: " ").map(String.init)
+        let frameworks = try XCTUnwrap(conf["FRAMEWORKS"], "saver.conf has no FRAMEWORKS")
+            .split(separator: " ").map(String.init)
         XCTAssertTrue(frameworks.contains("Metal"), "the saver links Metal at runtime")
         XCTAssertTrue(frameworks.contains("QuartzCore"), "CAMetalLayer comes from QuartzCore")
     }

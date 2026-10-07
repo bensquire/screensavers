@@ -8,9 +8,9 @@ import SaverKit
 /// developed and watched without installing it and locking the screen.
 final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
-    private var window: NSWindow!
-    private var blackHole: GargantuaMetalView!
-    private var configController: GargantuaConfigureSheet!
+    private var window: NSWindow?
+    private var blackHole: GargantuaMetalView?
+    private var configController: GargantuaConfigureSheet?
     private var timer: Timer?
     private var frameClock = FrameClock(nominalInterval: FrameClock.frameInterval)
     private let store = GargantuaSettingsStore(
@@ -18,7 +18,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
-        window = NSWindow(
+        let window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -26,12 +26,13 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Gargantua — Preview"
         window.center()
         window.backgroundColor = .black
+        self.window = window
 
         install(settings: store.settings, frame: frame)
 
         configController = GargantuaConfigureSheet(store: store) { [weak self] settings in
             guard let self else { return }
-            self.install(settings: settings, frame: self.window.contentView?.bounds ?? frame)
+            self.install(settings: settings, frame: self.window?.contentView?.bounds ?? frame)
         }
 
         buildMenu()
@@ -40,18 +41,19 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
         frameClock.reset()
         let interval = FrameClock.frameInterval
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.blackHole.advance(deltaTime: self.frameClock.tick())
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self, let blackHole = self.blackHole else { return }
+            blackHole.advance(deltaTime: self.frameClock.tick())
             // The adaptive controller is the interesting number while developing,
             // so it goes in the title rather than needing a HUD.
-            if self.blackHole.scene.frameIndex % 60 == 0 {
-                self.window.title = String(
+            if blackHole.scene.frameIndex % 60 == 0 {
+                self.window?.title = String(
                     format: "Gargantua — Preview  ·  render scale %.0f%%",
-                    self.blackHole.renderScale * 100)
+                    blackHole.renderScale * 100)
             }
         }
-        RunLoop.main.add(timer!, forMode: .common)
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     private func install(settings: GargantuaSettings, frame: NSRect) {
@@ -60,7 +62,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
             exit(1)
         }
         view.autoresizingMask = [.width, .height]
-        window.contentView = view
+        window?.contentView = view
         blackHole = view
     }
 
@@ -82,6 +84,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showOptions() {
+        guard let window, let configController else { return }
         window.beginSheet(configController.window, completionHandler: nil)
     }
 }

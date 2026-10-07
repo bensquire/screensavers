@@ -92,13 +92,13 @@ public final class GargantuaScene {
     /// A golden-ratio walk over the frame index, which the marcher uses to
     /// stratify its per-pixel sample offsets across frames.
     public var frameSequence: Float {
-        Float((Double(frameIndex) * 0.6180339887).truncatingRemainder(dividingBy: 1))
+        Float((Double(frameIndex) * 0.6180339887).wrapped(modulo: 1))
     }
 
     public func update(deltaTime: Double) {
         // A long gap — the display slept, or the saver was paused — must not be
         // integrated as if it really happened.
-        time += min(max(0, deltaTime), 0.1)
+        time += deltaTime.clamped(to: 0...0.1)
         events.update(time: time, parameters: parameters)
         camera.update(time: time, parameters: parameters)
         frameIndex += 1
@@ -111,7 +111,7 @@ public final class GargantuaScene {
     /// disk has had time to shear underneath it, which turns accumulation into
     /// smearing instead of convergence.
     public func accumulationAlpha(deltaTime: Double) -> Float {
-        let dt = min(max(0, deltaTime), 0.1)
+        let dt = deltaTime.clamped(to: 0...0.1)
         return Float((1 - exp(-dt / max(parameters.taaTau, 1e-3))).clamped(to: 0.02...1))
     }
 

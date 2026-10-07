@@ -1,4 +1,5 @@
 import Foundation
+import SaverCore
 
 /// Everything the look is made of.
 ///
@@ -173,6 +174,6 @@ public struct SceneParameters: Equatable {
         let a = signedSpin
         let rc = diskInnerRadius * 1.5
         let dOmega = 1.5 * rc.squareRoot() / pow(rc * rc.squareRoot() + a, 2)
-        return min(max(2 * .pi * noiseScale / max(dOmega, 1e-6), 40), 400)
+        return (2 * .pi * noiseScale / max(dOmega, 1e-6)).clamped(to: 40...400)
     }
 }

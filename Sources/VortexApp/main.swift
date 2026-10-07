@@ -10,9 +10,9 @@ import VortexRender
 ///   ,  options        F  full screen        Q  quit
 final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
-    private var window: NSWindow!
-    private var tunnel: VortexMetalView!
-    private var configController: VortexConfigureSheet!
+    private var window: NSWindow?
+    private var tunnel: VortexMetalView?
+    private var configController: VortexConfigureSheet?
     private var timer: Timer?
     private var frameClock = FrameClock(nominalInterval: FrameClock.frameInterval)
     private let store = VortexSettingsStore(
@@ -20,7 +20,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let frame = NSRect(x: 0, y: 0, width: 1280, height: 800)
-        window = NSWindow(
+        let window = NSWindow(
             contentRect: frame,
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
@@ -28,12 +28,13 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
         window.title = "Sliders Vortex — Preview"
         window.center()
         window.backgroundColor = .black
+        self.window = window
 
         install(settings: store.settings, frame: frame)
 
         configController = VortexConfigureSheet(store: store) { [weak self] settings in
             guard let self else { return }
-            self.install(settings: settings, frame: self.window.contentView?.bounds ?? frame)
+            self.install(settings: settings, frame: self.window?.contentView?.bounds ?? frame)
         }
 
         buildMenu()
@@ -42,12 +43,13 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
 
         frameClock.reset()
         let interval = FrameClock.frameInterval
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.tunnel.advance(deltaTime: self.frameClock.tick())
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self, let tunnel = self.tunnel else { return }
+            tunnel.advance(deltaTime: self.frameClock.tick())
         }
         // Keep animating while a menu is open or the window is being resized.
-        RunLoop.main.add(timer!, forMode: .common)
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     /// The particle count is baked into the GPU buffers, so a settings change
@@ -58,7 +60,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
             exit(1)
         }
         view.autoresizingMask = [.width, .height]
-        window.contentView = view
+        window?.contentView = view
         tunnel = view
     }
 
@@ -80,6 +82,7 @@ final class PreviewAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showOptions() {
+        guard let window, let configController else { return }
         window.beginSheet(configController.window, completionHandler: nil)
     }
 }

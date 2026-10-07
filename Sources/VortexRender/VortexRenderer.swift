@@ -52,12 +52,14 @@ public final class VortexRenderer {
         case noDevice
         case noCommandQueue
         case missingFunction(String)
+        case noColorAttachment
 
         public var description: String {
             switch self {
             case .noDevice: return "no Metal device"
             case .noCommandQueue: return "could not create a Metal command queue"
             case .missingFunction(let name): return "shader '\(name)' is missing"
+            case .noColorAttachment: return "could not configure a pipeline's colour attachment"
             }
         }
     }
@@ -138,10 +140,11 @@ public final class VortexRenderer {
         device: MTLDevice, _ particles: [Particle], label: String
     ) -> (buffer: MTLBuffer, count: Int)? {
         guard !particles.isEmpty else { return nil }
-        let buffer = particles.withUnsafeBytes {
-            device.makeBuffer(bytes: $0.baseAddress!, length: $0.count, options: .storageModeShared)
-        }
-        guard let buffer else { return nil }
+        guard
+            let buffer = device.makeBuffer(
+                bytes: particles, length: MemoryLayout<Particle>.stride * particles.count,
+                options: .storageModeShared)
+        else { return nil }
         buffer.label = label
         return (buffer, particles.count)
     }
@@ -158,7 +161,7 @@ public final class VortexRenderer {
         descriptor.label = label
         descriptor.vertexFunction = vertex
         descriptor.fragmentFunction = fragment
-        let attachment = descriptor.colorAttachments[0]!
+        guard let attachment = descriptor.colorAttachments[0] else { throw Failure.noColorAttachment }
         attachment.pixelFormat = format
         if additive {
             // The fragment shaders emit premultiplied colour, so adding both the
@@ -190,12 +193,14 @@ public final class VortexRenderer {
         }
         var uniforms = SceneUniforms(scene: scene, sceneScale: VortexRenderer.sceneScale)
 
-        let sceneTexture = offscreenTexture(matching: target)
+        // Nil when the GPU cannot allocate it, which costs that frame rather than
+        // the screensaver host.
+        guard let sceneTexture = offscreenTexture(matching: target) else { return }
         drawScene(scene, uniforms: &uniforms, to: sceneTexture, in: commandBuffer)
         drawPost(from: sceneTexture, uniforms: &uniforms, to: target, in: commandBuffer)
     }
 
-    private func offscreenTexture(matching target: MTLTexture) -> MTLTexture {
+    private func offscreenTexture(matching target: MTLTexture) -> MTLTexture? {
         let width = max(1, Int(Double(target.width) * VortexRenderer.sceneScale))
         let height = max(1, Int(Double(target.height) * VortexRenderer.sceneScale))
         if let existing = sceneTexture, existing.width == width, existing.height == height {
@@ -205,7 +210,7 @@ public final class VortexRenderer {
             pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
-        let texture = device.makeTexture(descriptor: descriptor)!
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.label = "scene"
         sceneTexture = texture
         return texture

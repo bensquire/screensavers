@@ -1,3 +1,4 @@
+import GargantuaCore
 import XCTest
 
 @testable import GargantuaRender
@@ -29,41 +30,53 @@ final class PackagingTests: XCTestCase {
         return settings
     }
 
+    /// saver.conf names the metallib and its source. If either drifts from what
+    /// ShaderLibrary loads, the built saver draws nothing while every other test
+    /// passes, because the tests compile the shader from source.
     func testTheBuildCompilesTheShaderTheLoaderLooksFor() throws {
         let conf = try saverConf()
         XCTAssertEqual(
             conf["METAL_LIBRARY"], ShaderLibrary.name,
             "saver.conf builds a differently-named metallib than ShaderLibrary loads")
 
-        let source = try XCTUnwrap(conf["METAL_SOURCES"])
+        let source = try XCTUnwrap(conf["METAL_SOURCES"], "saver.conf has no METAL_SOURCES")
         let path = Self.repositoryRoot.appendingPathComponent(source)
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: path.path),
             "saver.conf points METAL_SOURCES at \(source), which does not exist")
     }
 
+    /// build-saver.sh compiles MODULES in the order given and links FRAMEWORKS;
+    /// a module out of order or a framework left out breaks only the bundle
+    /// build, which no other test runs.
     func testTheSaverIsBuiltFromTheModulesItNeeds() throws {
         let conf = try saverConf()
-        let modules = try XCTUnwrap(conf["MODULES"]).split(separator: " ").map(String.init)
-        // build-saver.sh compiles these in the order given, so a dependency
-        // listed after its dependent will not resolve.
+        let modules = try XCTUnwrap(conf["MODULES"], "saver.conf has no MODULES")
+            .split(separator: " ").map(String.init)
         XCTAssertEqual(
-            modules, ["SaverCore", "SaverKit", "GargantuaCore", "GargantuaRender", "GargantuaSaver"])
+            modules, ["SaverCore", "SaverKit", "GargantuaCore", "GargantuaRender", "GargantuaSaver"],
+            "saver.conf's MODULES changed, or a dependency is listed after its dependent")
 
-        let frameworks = try XCTUnwrap(conf["FRAMEWORKS"]).split(separator: " ").map(String.init)
-        XCTAssertTrue(frameworks.contains("Metal"))
+        let frameworks = try XCTUnwrap(conf["FRAMEWORKS"], "saver.conf has no FRAMEWORKS")
+            .split(separator: " ").map(String.init)
+        XCTAssertTrue(frameworks.contains("Metal"), "the saver links Metal at runtime")
         XCTAssertTrue(frameworks.contains("QuartzCore"), "CAMetalLayer comes from QuartzCore")
     }
 
+    /// SPOT_COUNT in Gargantua.metal sizes the uniform array and
+    /// DiskEvents.maxSpots decides how many are filled. If they disagree, spots
+    /// are silently dropped or the buffer overruns. Compared with maxSpots itself:
+    /// against a literal, changing both together would fail and changing only
+    /// maxSpots would pass.
     func testTheHotSpotCapacityAgreesWithTheShader() throws {
-        // SPOT_COUNT in Gargantua.metal is a compile-time constant sizing the
-        // uniform array; DiskEvents.maxSpots decides how many are filled. If
-        // they disagree, spots are silently dropped or the buffer overruns.
         let url = Self.repositoryRoot
             .appendingPathComponent("Sources/GargantuaRender/Gargantua.metal")
         let source = try String(contentsOf: url, encoding: .utf8)
+
+        let declaration = "constant int SPOT_COUNT = \(DiskEvents.maxSpots);"
+
         XCTAssertTrue(
-            source.contains("constant int SPOT_COUNT = 3;"),
-            "the shader's SPOT_COUNT no longer matches DiskEvents.maxSpots")
+            source.contains(declaration),
+            "the shader does not declare SPOT_COUNT as DiskEvents.maxSpots (\(DiskEvents.maxSpots))")
     }
 }

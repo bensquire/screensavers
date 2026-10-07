@@ -21,14 +21,18 @@ final class SaverLifecycleTests: XCTestCase {
         ProcessInfo.processInfo.isLowPowerModeEnabled ? 2 * frameInterval : frameInterval
     }
 
+    /// The host no longer stops a saver when the screensaver is dismissed;
+    /// without this signal a full-screen instance keeps drawing after it.
     func testSessionEndStopsAFullScreenInstance() {
         let center = NotificationCenter()
         var ended = 0
         let lifecycle = SaverLifecycle(
             view: makeView(), frameInterval: frameInterval, sessionCenter: center
         ) { ended += 1 }
+
         center.post(name: SaverLifecycle.sessionWillStop, object: nil)
-        XCTAssertEqual(ended, 1)
+
+        XCTAssertEqual(ended, 1, "the session end stopped the saver \(ended) times, not once")
         withExtendedLifetime(lifecycle) {}
     }
 
@@ -40,8 +44,10 @@ final class SaverLifecycleTests: XCTestCase {
         let lifecycle = SaverLifecycle(
             view: makeView(isPreview: true), frameInterval: frameInterval, sessionCenter: center
         ) { ended += 1 }
+
         center.post(name: SaverLifecycle.sessionWillStop, object: nil)
-        XCTAssertEqual(ended, 0)
+
+        XCTAssertEqual(ended, 0, "the session end stopped the preview")
         withExtendedLifetime(lifecycle) {}
     }
 
@@ -54,8 +60,10 @@ final class SaverLifecycleTests: XCTestCase {
             view: makeView(), frameInterval: frameInterval, sessionCenter: center
         ) { ended += 1 }
         lifecycle = nil
+
         center.post(name: SaverLifecycle.sessionWillStop, object: nil)
-        XCTAssertEqual(ended, 0)
+
+        XCTAssertEqual(ended, 0, "a released lifecycle still answered the session end")
         XCTAssertNil(lifecycle)
     }
 
@@ -71,17 +79,23 @@ final class SaverLifecycleTests: XCTestCase {
         let workspace = NSWorkspace.shared.notificationCenter
 
         XCTAssertFalse(lifecycle.isSuspended)
-        XCTAssertEqual(view.animationTimeInterval, awakeInterval, accuracy: 1e-9)
+        XCTAssertEqual(
+            view.animationTimeInterval, awakeInterval, accuracy: 1e-9,
+            "awake, the timer runs every \(view.animationTimeInterval) s")
 
         workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
         XCTAssertTrue(lifecycle.isSuspended)
-        XCTAssertEqual(view.animationTimeInterval, SaverLifecycle.sleepingInterval, accuracy: 1e-9)
-        XCTAssertEqual(changes, 1)
+        XCTAssertEqual(
+            view.animationTimeInterval, SaverLifecycle.sleepingInterval, accuracy: 1e-9,
+            "asleep, the timer runs every \(view.animationTimeInterval) s")
+        XCTAssertEqual(changes, 1, "sleeping reported \(changes) changes, not 1")
 
         workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
         XCTAssertFalse(lifecycle.isSuspended)
-        XCTAssertEqual(view.animationTimeInterval, awakeInterval, accuracy: 1e-9)
-        XCTAssertEqual(changes, 2)
+        XCTAssertEqual(
+            view.animationTimeInterval, awakeInterval, accuracy: 1e-9,
+            "woken, the timer runs every \(view.animationTimeInterval) s")
+        XCTAssertEqual(changes, 2, "sleeping and waking reported \(changes) changes, not 2")
     }
 
     /// Low Power Mode halves the frame rate. Which applies depends on the machine
@@ -94,7 +108,11 @@ final class SaverLifecycleTests: XCTestCase {
         let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         XCTAssertEqual(
             lifecycle.framesPerSecond,
-            lowPower ? FrameClock.framesPerSecond / 2 : FrameClock.framesPerSecond)
-        XCTAssertEqual(view.animationTimeInterval, awakeInterval, accuracy: 1e-9)
+            lowPower ? FrameClock.framesPerSecond / 2 : FrameClock.framesPerSecond,
+            "with Low Power Mode \(lowPower ? "on" : "off") the saver runs at \(lifecycle.framesPerSecond) fps"
+        )
+        XCTAssertEqual(
+            view.animationTimeInterval, awakeInterval, accuracy: 1e-9,
+            "the timer runs every \(view.animationTimeInterval) s")
     }
 }

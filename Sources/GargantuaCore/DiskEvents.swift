@@ -97,7 +97,7 @@ public struct DiskEvents {
             let age = (t - spot.born) / spot.life
             // Fades up and back down over its life, so a spot never appears or
             // vanishes at full brightness.
-            let envelope = sin(min(max(age, 0), 1) * .pi)
+            let envelope = sin(age.clamped(to: 0...1) * .pi)
             let angle =
                 spot.phase
                 + churn * KerrGeometry.omega(radius: spot.radius, spin: p.signedSpin)
@@ -130,7 +130,7 @@ public struct DiskEvents {
             // stepped up to as much as 1.65x brighter in a single frame — and the
             // accumulation's variance clip passes a step like that straight through.
             let k = 1 - (flareUntil - t) / flareLength
-            flare = 1 + (flarePeak - 1) * sin(min(max(k, 0), 1) * .pi)
+            flare = 1 + (flarePeak - 1) * sin(k.clamped(to: 0...1) * .pi)
         } else {
             flare = 1
         }
@@ -160,19 +160,19 @@ public struct WindPhase {
 
     public init(time t: Double, parameters p: SceneParameters) {
         let churn = DiskEvents.churn(time: t, parameters: p)
-        rigid = (churn * p.omegaReference).truncatingRemainder(dividingBy: 2 * .pi)
+        rigid = (churn * p.omegaReference).wrapped(modulo: 2 * .pi)
 
         let period = p.windPeriod
-        let x = churn / period - (churn / period).rounded(.down)
+        let x = (churn / period).wrapped(modulo: 1)
         // Hands over from one phase to the other while the one about to reset is
         // invisible, and rests on a single layer for the 60% of the cycle in the
         // middle — so the second pattern evaluation is only paid for while it is
         // actually being seen.
         let u = abs(x - 0.5)
-        let s = min(max((u - 0.15) / 0.20, 0), 1)
+        let s = ((u - 0.15) / 0.20).clamped(to: 0...1)
         differential = SIMD3(
             Float((x - 0.5) * period),
-            Float(((x + 0.5).truncatingRemainder(dividingBy: 1) - 0.5) * period),
+            Float(((x + 0.5).wrapped(modulo: 1) - 0.5) * period),
             Float(s * s * (3 - 2 * s)))
     }
 }

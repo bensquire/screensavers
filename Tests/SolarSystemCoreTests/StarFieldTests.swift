@@ -80,6 +80,9 @@ final class StarFieldTests: XCTestCase {
         }
     }
 
+    /// The field repeats with its period. A field that drifted out of phase over
+    /// a long session would slowly thin out or bunch up; a thousand periods on,
+    /// every star must be back where it was.
     func testAWholePeriodLaterLooksTheSame() throws {
         let viewer = try Viewer()
         let period = viewer.field.length
@@ -88,6 +91,10 @@ final class StarFieldTests: XCTestCase {
         let moved = try viewer.frame(driftDistance: 7.3 + period * 0.25)
         // Exactly a whole number of periods on, every star is back where it was;
         // a quarter of one on, they are not.
-        XCTAssertLessThan(change(start, later), change(start, moved) / 50)
+        let drift = change(start, later)
+        let quarter = change(start, moved)
+        XCTAssertLessThan(
+            drift, quarter / 50,
+            "a thousand periods on the sky changed by \(drift), against \(quarter) for a quarter period")
     }
 }

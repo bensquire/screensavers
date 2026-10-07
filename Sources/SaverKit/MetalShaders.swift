@@ -107,13 +107,11 @@ extension MTLTexture {
 
         let bytesPerRow = width * 4
         var pixels = [UInt8](repeating: 0, count: bytesPerRow * height)
-        pixels.withUnsafeMutableBytes { buffer in
-            getBytes(
-                buffer.baseAddress!,
-                bytesPerRow: bytesPerRow,
-                from: MTLRegionMake2D(0, 0, width, height),
-                mipmapLevel: 0)
-        }
+        getBytes(
+            &pixels,
+            bytesPerRow: bytesPerRow,
+            from: MTLRegionMake2D(0, 0, width, height),
+            mipmapLevel: 0)
 
         // The targets are BGRA; Core Graphics is told so rather than the
         // channels being swapped by hand.

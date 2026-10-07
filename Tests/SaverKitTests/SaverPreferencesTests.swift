@@ -36,11 +36,13 @@ final class SaverPreferencesTests: XCTestCase {
         return preferences
     }
 
+    /// A fresh install has stored nothing; every read must fall to the
+    /// registered defaults, or the saver starts at zeros and empty strings.
     func testRegisteredDefaultsAnswerWhenNothingIsStored() {
         let preferences = makePreferences()
-        XCTAssertEqual(preferences.double(forKey: "speed"), 1.0)
-        XCTAssertTrue(preferences.bool(forKey: "enabled"))
-        XCTAssertEqual(preferences.string(forKey: "mode"), "both")
+        XCTAssertEqual(preferences.double(forKey: "speed"), 1.0, "the speed default did not answer")
+        XCTAssertTrue(preferences.bool(forKey: "enabled"), "the enabled default did not answer")
+        XCTAssertEqual(preferences.string(forKey: "mode"), "both", "the mode default did not answer")
     }
 
     /// What a refused ByHost write leaves behind: the choice in the mirror and
@@ -51,15 +53,21 @@ final class SaverPreferencesTests: XCTestCase {
         fallback.set(3.0, forKey: "\(identifier).speed")
         fallback.set(false, forKey: "\(identifier).enabled")
         fallback.set("catalogue", forKey: "\(identifier).mode")
-        XCTAssertEqual(preferences.double(forKey: "speed"), 3.0)
-        XCTAssertFalse(preferences.bool(forKey: "enabled"))
-        XCTAssertEqual(preferences.string(forKey: "mode"), "catalogue")
+        XCTAssertEqual(preferences.double(forKey: "speed"), 3.0, "the mirrored speed was not read back")
+        XCTAssertFalse(preferences.bool(forKey: "enabled"), "the mirrored switch was not read back")
+        XCTAssertEqual(
+            preferences.string(forKey: "mode"), "catalogue", "the mirrored mode was not read back")
     }
 
+    /// A write goes to both stores, so whichever one the sandboxed host lets
+    /// survive, the choice reads back.
     func testAWriteReadsBackFromEitherStore() {
         let preferences = makePreferences()
+
         preferences.set(2.5, forKey: "speed")
-        XCTAssertEqual(preferences.double(forKey: "speed"), 2.5)
-        XCTAssertEqual(fallback.double(forKey: "\(identifier).speed"), 2.5)
+
+        XCTAssertEqual(preferences.double(forKey: "speed"), 2.5, "the written speed did not read back")
+        XCTAssertEqual(
+            fallback.double(forKey: "\(identifier).speed"), 2.5, "the write did not reach the mirror")
     }
 }

@@ -17,6 +17,9 @@ final class RenderTests: XCTestCase {
         return device
     }
 
+    /// The uniforms reach the GPU as raw memory, so a field padded or ordered
+    /// differently in Swift does not fail to compile — every field after it
+    /// arrives wrong. The probe reports Metal's own sizes and offsets.
     func testSwiftAndMetalAgreeOnBufferLayout() throws {
         let device = try makeDevice()
         let library = try ShaderLibrary.compileFromSource(device: device)
@@ -66,10 +69,14 @@ final class RenderTests: XCTestCase {
             Int(reported[4]), MemoryLayout<MarchUniforms>.offset(of: \.flare),
             "MarchUniforms.flare is at a different offset — the tail has shifted")
         XCTAssertEqual(
-            Int(reported[5]), MemoryLayout<AccumulateUniforms>.offset(of: \.resolution))
+            Int(reported[5]), MemoryLayout<AccumulateUniforms>.offset(of: \.resolution),
+            "AccumulateUniforms.resolution is at a different offset")
         XCTAssertEqual(
-            Int(reported[6]), MemoryLayout<AccumulateUniforms>.offset(of: \.sharpen))
-        XCTAssertEqual(Int(reported[7]), MemoryLayout<PostUniforms>.stride)
+            Int(reported[6]), MemoryLayout<AccumulateUniforms>.offset(of: \.sharpen),
+            "AccumulateUniforms.sharpen is at a different offset")
+        XCTAssertEqual(
+            Int(reported[7]), MemoryLayout<PostUniforms>.stride,
+            "PostUniforms is a different size in Swift and Metal")
         // The last fields of each: a field present on one side only can hide in
         // trailing padding, where the sizes above would still agree.
         XCTAssertEqual(
@@ -134,6 +141,9 @@ final class RenderTests: XCTestCase {
         return Frame(width: width, height: height, pixels: image.bgraBytes)
     }
 
+    /// A broken march or a lost uniform draws black or a flat grey, and a check
+    /// that a frame merely exists would pass either. The shadow must be dark and
+    /// the disk lit.
     func testTheShadowIsDarkAndTheDiskIsNot() throws {
         let frame = try render()
 
@@ -151,17 +161,18 @@ final class RenderTests: XCTestCase {
         // Not perfectly black: bloom from the disk bleeds across the whole
         // frame, which is real and wanted. It should still be a fraction of a
         // percent of the brightest gas.
-        XCTAssertLessThan(shadow, 0.02, "the middle of the frame is not the shadow")
-        XCTAssertGreaterThan(diskPeak, 0.3, "the disk is not plainly lit")
+        XCTAssertLessThan(
+            shadow, 0.02, "the middle of the frame is \(shadow) bright, not the shadow")
+        XCTAssertGreaterThan(diskPeak, 0.3, "the brightest gas is only \(diskPeak)")
         XCTAssertGreaterThan(
-            diskPeak, shadow * 20, "no real contrast between the disk and the shadow")
+            diskPeak, shadow * 20,
+            "the disk (\(diskPeak)) is not 20x the shadow (\(shadow))")
     }
 
+    /// The signature of the thing: light from the far side of the disk is bent
+    /// over and under the hole, so there is disk above and below the shadow as
+    /// well as either side of it. Without lensing there would be a flat bar.
     func testTheDiskIsLensedAboveAndBelowTheShadow() throws {
-        // The signature of the thing: light from the far side of the disk is
-        // bent over and under the hole, so there is disk above and below the
-        // shadow as well as either side of it. Without lensing there would be a
-        // flat bar and nothing else.
         let frame = try render()
         let cx = frame.width / 2
 
@@ -176,11 +187,10 @@ final class RenderTests: XCTestCase {
         XCTAssertGreaterThan(below, max(0.01, shadow * 3), "no lensed disk below the shadow")
     }
 
+    /// With beaming off the disk is left-right symmetric in brightness; with it
+    /// on, the limb rotating toward the camera is far brighter. A switch that
+    /// stopped reaching the shader would leave the disk symmetric either way.
     func testBeamingMakesTheDiskLopsided() throws {
-        // With beaming off the disk is left-right symmetric in brightness; with
-        // it on, the limb rotating toward the camera is far brighter. That
-        // asymmetry is the one piece of physics Interstellar dropped, so it is
-        // worth pinning that the switch really does something.
         func asymmetry(beaming: Double) throws -> Double {
             let frame = try render(
                 settings: GargantuaSettings(
@@ -195,23 +205,29 @@ final class RenderTests: XCTestCase {
 
         let symmetric = try asymmetry(beaming: 0)
         let beamed = try asymmetry(beaming: 1)
-        XCTAssertGreaterThan(beamed, symmetric + 0.05, "beaming did not brighten one limb")
+        XCTAssertGreaterThan(
+            beamed, symmetric + 0.05,
+            "beaming did not brighten one limb: asymmetry \(beamed) against \(symmetric) without it")
     }
 
+    /// The sky of the shipped look is otherwise black, so with the stars off the
+    /// corners must be genuinely empty; a setting that stopped reaching the
+    /// shader would leave them lit.
     func testStarsCanBeTurnedOff() throws {
-        // The sky of the shipped look is otherwise black, so with the stars off
-        // the corners should be genuinely empty.
         let frame = try render(
             settings: GargantuaSettings(
                 pace: 1, beaming: 0, stars: 0, adaptiveResolution: false, renderScale: 1))
         for (x, y) in [(2, 2), (frame.width - 3, 2), (2, frame.height - 3)] {
-            XCTAssertLessThan(
-                frame.luminance(x: x, y: y), 0.001, "corner (\(x),\(y)) is not black")
+            let corner = frame.luminance(x: x, y: y)
+            XCTAssertLessThan(corner, 0.001, "corner (\(x),\(y)) is \(corner) bright, not black")
         }
     }
 
     // MARK: - Adaptive resolution
 
+    /// The scale must climb when frames are cheap and fall when they are dear —
+    /// the pair is the behaviour. Stuck in either direction, the saver stays
+    /// blurry for good or holds the GPU all night.
     func testAdaptiveResolutionMovesTowardTheBudget() {
         var adaptive = AdaptiveResolution(renderScale: 0.55)
         adaptive.budget = 1.0 / 60
@@ -219,50 +235,76 @@ final class RenderTests: XCTestCase {
         // Comfortably inside budget: it should climb, but only after enough
         // agreeing frames, because a change reallocates every target.
         for _ in 0..<400 { _ = adaptive.note(gpuSeconds: 0.002) }
-        XCTAssertGreaterThan(adaptive.renderScale, 0.55)
+        let climbed = adaptive.renderScale
+        XCTAssertGreaterThan(
+            climbed, 0.55, "400 frames at 2 ms of a 16.7 ms budget left the scale at \(climbed)")
 
         // Now far too slow: it should fall back.
-        let climbed = adaptive.renderScale
         for _ in 0..<400 { _ = adaptive.note(gpuSeconds: 0.060) }
-        XCTAssertLessThan(adaptive.renderScale, climbed)
-        XCTAssertGreaterThanOrEqual(adaptive.renderScale, AdaptiveResolution.minimumScale)
+        XCTAssertLessThan(
+            adaptive.renderScale, climbed,
+            "400 frames at 60 ms did not bring the scale down from \(climbed)")
+        XCTAssertGreaterThanOrEqual(
+            adaptive.renderScale, AdaptiveResolution.minimumScale,
+            "the scale fell to \(adaptive.renderScale), below its minimum")
     }
 
+    /// However long frames stay cheap or dear, the scale settles at its bounds
+    /// rather than past them: above the maximum it renders pixels nobody sees,
+    /// below the minimum the hole is a smear.
     func testAdaptiveResolutionStaysWithinItsBounds() {
         var adaptive = AdaptiveResolution(renderScale: 0.55)
         adaptive.budget = 1.0 / 60
         for _ in 0..<5000 { _ = adaptive.note(gpuSeconds: 0.0001) }
-        XCTAssertEqual(adaptive.renderScale, AdaptiveResolution.maximumScale, accuracy: 1e-9)
+        XCTAssertEqual(
+            adaptive.renderScale, AdaptiveResolution.maximumScale, accuracy: 1e-9,
+            "near-free frames did not settle at the maximum scale")
         for _ in 0..<5000 { _ = adaptive.note(gpuSeconds: 5.0) }
-        XCTAssertEqual(adaptive.renderScale, AdaptiveResolution.minimumScale, accuracy: 1e-9)
+        XCTAssertEqual(
+            adaptive.renderScale, AdaptiveResolution.minimumScale, accuracy: 1e-9,
+            "5 s frames did not settle at the minimum scale")
     }
 
+    /// The tests and the thumbnail renderer fix the scale so their frames are
+    /// comparable; a fixed scale that still moved would make each render differ.
     func testFixingTheScaleStopsItMoving() {
         var adaptive = AdaptiveResolution()
         adaptive.fix(at: 0.42)
-        for _ in 0..<2000 { XCTAssertFalse(adaptive.note(gpuSeconds: 1.0)) }
-        XCTAssertEqual(adaptive.renderScale, 0.42, accuracy: 1e-9)
+        for frame in 0..<2000 {
+            XCTAssertFalse(
+                adaptive.note(gpuSeconds: 1.0), "frame \(frame): a fixed scale asked to change")
+        }
+        XCTAssertEqual(adaptive.renderScale, 0.42, accuracy: 1e-9, "the fixed scale moved")
     }
 
     // MARK: - Noise
 
+    /// The marcher selects a mip explicitly to prefilter the field to its sample
+    /// spacing, so a volume built without its mip chain samples aliased noise.
     func testNoiseVolumeIsBuiltWithMips() throws {
         let device = try makeDevice()
         guard let queue = device.makeCommandQueue(),
             let texture = NoiseVolume.make(device: device, queue: queue)
         else { return XCTFail("could not build the noise volume") }
-        XCTAssertEqual(texture.textureType, MTLTextureType.type3D)
-        XCTAssertEqual(texture.width, NoiseVolume.size)
-        XCTAssertEqual(texture.depth, NoiseVolume.size)
-        // The marcher selects a mip explicitly to prefilter the field to its
-        // sample spacing, so the chain has to be there.
-        XCTAssertGreaterThan(texture.mipmapLevelCount, 5)
+        XCTAssertEqual(texture.textureType, MTLTextureType.type3D, "the noise volume is not 3D")
+        XCTAssertEqual(texture.width, NoiseVolume.size, "the noise volume is the wrong width")
+        XCTAssertEqual(texture.depth, NoiseVolume.size, "the noise volume is the wrong depth")
+        XCTAssertGreaterThan(
+            texture.mipmapLevelCount, 5, "only \(texture.mipmapLevelCount) mip levels")
+    }
 
-        // Second call returns the cached volume rather than spending another
-        // ~11ms rebuilding an identical million voxels.
-        XCTAssertTrue(
-            NoiseVolume.shared(device: device, queue: queue)
-                === NoiseVolume.shared(device: device, queue: queue),
-            "the noise volume is not being cached")
+    /// The volume costs ~11 ms to build; every renderer after the first must get
+    /// the same one back rather than rebuilding an identical million voxels.
+    func testNoiseVolumeIsBuiltOnce() throws {
+        let device = try makeDevice()
+        guard let queue = device.makeCommandQueue() else {
+            return XCTFail("could not make a command queue")
+        }
+
+        let first = NoiseVolume.shared(device: device, queue: queue)
+        let second = NoiseVolume.shared(device: device, queue: queue)
+
+        XCTAssertNotNil(first, "could not build the noise volume")
+        XCTAssertTrue(first === second, "the noise volume is not being cached")
     }
 }

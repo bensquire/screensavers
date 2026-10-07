@@ -14,36 +14,27 @@ import os.log
 @objc(SolarSystemSaverView)
 public final class SolarSystemSaverView: ScreenSaverView {
 
-    /// The storage contract lives with `ScalePreset`, since the raw values are half of
-    /// it. Also settable from a terminal — see Scripts/scale-mode.sh.
     private static let log = OSLog(
         subsystem: ScalePreset.Preference.domain, category: "preferences"
     )
 
-    /// Mirrored into standard defaults as well as the module's ByHost store —
-    /// see `SaverPreferences`, which is where this project's version of this
-    /// workaround now lives so every saver gets it.
+    /// Mirrored into standard defaults as well as the module's ByHost store,
+    /// because the options sheet is presented from a sandboxed host where a write
+    /// to `ScreenSaverDefaults` is not guaranteed to land; see `SaverPreferences`.
     private static let preferences = SaverPreferences(
         moduleIdentifier: ScalePreset.Preference.domain)
 
-    /// Read and written through two stores.
-    ///
-    /// `ScreenSaverDefaults` is the documented mechanism and works fine in a normal
-    /// process, but the options sheet is presented from a sandboxed host and a write
-    /// there is not guaranteed to land. Mirroring into standard defaults costs nothing
-    /// and means the setting survives even when the ByHost write is refused.
+    /// The storage contract lives with `ScalePreset`, since the raw values are half
+    /// of it. Also settable from a terminal — see Scripts/scale-mode.sh.
     public static var scalePreset: ScalePreset {
         get {
             // Clamped to what is actually offered, so a preference left behind by a
             // preset that is no longer selectable falls back rather than sticking.
-            for raw in [preferences.string(forKey: ScalePreset.Preference.key)] {
-                if let raw, let p = ScalePreset(rawValue: raw),
-                    ScalePreset.selectable.contains(p)
-                {
-                    return p
-                }
-            }
-            return .stylised
+            guard let raw = preferences.string(forKey: ScalePreset.Preference.key),
+                let preset = ScalePreset(rawValue: raw),
+                ScalePreset.selectable.contains(preset)
+            else { return .stylised }
+            return preset
         }
         set {
             preferences.set(newValue.rawValue, forKey: ScalePreset.Preference.key)

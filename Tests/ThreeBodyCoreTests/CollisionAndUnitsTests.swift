@@ -26,13 +26,18 @@ final class CollisionTests: XCTestCase {
 
         let result = s.merge(0, 1)
 
-        XCTAssertEqual(s.bodies.count, 2)
-        XCTAssertEqual(s.totalMass, massBefore, accuracy: 1e-12)
-        XCTAssertLessThan((s.linearMomentum - momentumBefore).length, 1e-12)
-        XCTAssertEqual(angularBefore - s.angularMomentum, spin, accuracy: 1e-12)
-        XCTAssertLessThan(s.kineticEnergy, kineticBefore)
-        XCTAssertEqual(result.kineticEnergyLost, kineticBefore - s.kineticEnergy, accuracy: 1e-12)
-        XCTAssertGreaterThan(result.kineticEnergyLost, 0)
+        XCTAssertEqual(s.bodies.count, 2, "the merge left \(s.bodies.count) bodies")
+        XCTAssertEqual(s.totalMass, massBefore, accuracy: 1e-12, "the merge changed the total mass")
+        let momentumChange = (s.linearMomentum - momentumBefore).length
+        XCTAssertLessThan(momentumChange, 1e-12, "the merge changed the momentum by \(momentumChange)")
+        XCTAssertEqual(
+            angularBefore - s.angularMomentum, spin, accuracy: 1e-12,
+            "the angular momentum lost is not the pair's spin of \(spin)")
+        XCTAssertLessThan(s.kineticEnergy, kineticBefore, "the merge did not shed kinetic energy")
+        XCTAssertEqual(
+            result.kineticEnergyLost, kineticBefore - s.kineticEnergy, accuracy: 1e-12,
+            "the reported loss of \(result.kineticEnergyLost) is not what the merge shed")
+        XCTAssertGreaterThan(result.kineticEnergyLost, 0, "the merge reported no heat")
     }
 
     /// The contact radius must be small enough that no published orbit ever
@@ -62,7 +67,9 @@ final class CollisionTests: XCTestCase {
             String(
                 format: "  closest: %@ at %.2e of its extent (contact at %.2e)",
                 worst.name, worst.ratio, 1.39 * contactScale))
-        XCTAssertGreaterThan(worst.ratio, 2.0 * 1.39 * contactScale)
+        XCTAssertGreaterThan(
+            worst.ratio, 2.0 * 1.39 * contactScale,
+            "\(worst.name) came to \(worst.ratio) of its extent, inside twice the contact distance")
     }
 }
 
@@ -80,12 +87,23 @@ final class UnitsTests: XCTestCase {
         var s = orbit
         let stepper = AdaptiveStepper(order: .eighth, eta: 0.01)
         stepper.advance(&s, by: Units.timeUnits(fromYears: 1.0), maxSteps: 500_000)
-        XCTAssertLessThan((s.bodies[1].position - orbit.bodies[1].position).length, 1e-6)
+        let miss = (s.bodies[1].position - orbit.bodies[1].position).length
+        XCTAssertLessThan(miss, 1e-6, "after one year the body is \(miss) AU from where it started")
     }
 
-    func testGravitationalConstantAndVelocityUnit() {
-        XCTAssertEqual(Units.gravitationalConstant, 4 * .pi * .pi, accuracy: 1e-12)
-        // One velocity unit is Earth's orbital speed — a useful sanity anchor.
-        XCTAssertEqual(Units.kilometresPerSecond(fromVelocityUnits: 1.0), 29.78, accuracy: 0.05)
+    /// In AU, solar masses and years G is 4π²; any other value means the units
+    /// the scene is drawn in are not the ones its labels claim.
+    func testGravitationalConstantIsFourPiSquared() {
+        XCTAssertEqual(
+            Units.gravitationalConstant, 4 * .pi * .pi, accuracy: 1e-12,
+            "G is \(Units.gravitationalConstant), not 4π²")
+    }
+
+    /// One velocity unit is Earth's orbital speed, 29.78 km/s — the anchor for
+    /// every speed the HUD shows.
+    func testOneVelocityUnitIsEarthsOrbitalSpeed() {
+        let speed = Units.kilometresPerSecond(fromVelocityUnits: 1.0)
+
+        XCTAssertEqual(speed, 29.78, accuracy: 0.05, "one velocity unit is \(speed) km/s")
     }
 }

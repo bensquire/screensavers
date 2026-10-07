@@ -90,9 +90,11 @@ final class IntegratorTests: XCTestCase {
             maxEnergyError = max(maxEnergyError, abs((s.totalEnergy - e0) / e0))
         }
         print(String(format: "  6th order, t=200: max |ΔE/E| = %.2e", maxEnergyError))
-        XCTAssertLessThan(maxEnergyError, 1e-10)
-        XCTAssertLessThan(abs(s.angularMomentum - l0), 1e-10)
-        XCTAssertLessThan((s.linearMomentum - p0).length, 1e-10)
+        XCTAssertLessThan(maxEnergyError, 1e-10, "the energy drifted by \(maxEnergyError) of itself")
+        let angularDrift = abs(s.angularMomentum - l0)
+        XCTAssertLessThan(angularDrift, 1e-10, "the angular momentum drifted by \(angularDrift)")
+        let momentumDrift = (s.linearMomentum - p0).length
+        XCTAssertLessThan(momentumDrift, 1e-10, "the momentum drifted by \(momentumDrift)")
     }
 
     /// The adaptive, time-symmetric driver has to hold that bounded error while
@@ -117,7 +119,9 @@ final class IntegratorTests: XCTestCase {
             // Past 6th order the error stops tracking the step size: it is set
             // by however deep the closest encounter on that particular chaotic
             // path happened to be, so the bar is held flat rather than tightened.
-            XCTAssertLessThan(maxError, accuracy == .standard ? 1e-5 : 1e-7)
+            let bar = accuracy == .standard ? 1e-5 : 1e-7
+            XCTAssertLessThan(
+                maxError, bar, "\(accuracy.rawValue): max |ΔE/E| \(maxError) exceeds \(bar)")
         }
     }
 

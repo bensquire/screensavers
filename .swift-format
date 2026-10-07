@@ -6,8 +6,9 @@
     "rules": {
         "AlwaysUseLowerCamelCase": true,
         "DoNotUseSemicolons": true,
-        "NeverForceUnwrap": false,
-        "NeverUseForceTry": false,
+        "NeverForceUnwrap": true,
+        "NeverUseForceTry": true,
+        "NeverUseImplicitlyUnwrappedOptionals": true,
         "OrderedImports": true,
         "NoBlockComments": true,
         "UseShorthandTypeNames": true

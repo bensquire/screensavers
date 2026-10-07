@@ -18,12 +18,11 @@ final class RenderTests: XCTestCase {
     }
 
     // MARK: - Struct layout
-    //
-    // The uniform and particle buffers are handed to the GPU as raw memory, so a
-    // field reordered on one side and not the other would not fail to compile —
-    // it would silently render nonsense. Ask the shader what it thinks the
-    // structs look like and compare.
 
+    /// The uniform and particle buffers are handed to the GPU as raw memory, so a
+    /// field reordered on one side and not the other would not fail to compile —
+    /// it would silently render nonsense. The shader reports what it thinks the
+    /// structs look like.
     func testSwiftAndMetalAgreeOnBufferLayout() throws {
         let device = try makeDevice()
         let library = try ShaderLibrary.compileFromSource(device: device)
@@ -113,9 +112,12 @@ final class RenderTests: XCTestCase {
         }.count
     }
 
+    /// A pipeline that compiles but draws nothing passes every check short of
+    /// looking at the frame: the background must light most of it and the
+    /// streaks must put highlights well above that.
     func testAFrameHasSomethingInIt() throws {
         let (image, pixels) = try renderFrame()
-        XCTAssertEqual(image.width, 320)
+        XCTAssertEqual(image.width, 320, "the frame came back \(image.width) pixels wide")
 
         var lit = 0
         var brightest = 0
@@ -127,16 +129,18 @@ final class RenderTests: XCTestCase {
         let total = image.width * image.height
         // The background alone lights most of the frame; the streaks put the
         // highlights well above it.
-        XCTAssertGreaterThan(lit, total / 10, "the frame is essentially black")
-        XCTAssertGreaterThan(brightest, 140, "nothing bright was drawn")
+        XCTAssertGreaterThan(
+            lit, total / 10, "only \(lit) of \(total) pixels are lit; the frame is essentially black")
+        XCTAssertGreaterThan(
+            brightest, 140, "the brightest channel is \(brightest); nothing bright was drawn")
     }
 
+    /// A renderer that draws the opening frame forever would pass every check
+    /// above. Two frames eight seconds apart must differ.
     func testTheSceneActuallyMoves() throws {
-        // A renderer that draws the opening frame forever would pass every check
-        // above. Two frames four seconds apart must differ.
         let early = try renderFrame(settleSeconds: 1).pixels
         let later = try renderFrame(settleSeconds: 9).pixels
-        XCTAssertEqual(early.count, later.count)
+        XCTAssertEqual(early.count, later.count, "the two frames are different sizes")
 
         XCTAssertGreaterThan(
             RenderTests.differingPixels(early, later, threshold: 8), early.count / 4 / 50,
@@ -154,7 +158,7 @@ final class RenderTests: XCTestCase {
             if frame == 120 { scene.rebaseParticleClock() }
             generation = scene.particleGeneration
         }.pixels
-        XCTAssertEqual(generation, 1)
+        XCTAssertEqual(generation, 1, "the clock was rebased \(generation) times, not once")
 
         // Float rounding moves the odd edge pixel by a level or two; a particle
         // in the wrong place moves dozens of pixels by far more.
@@ -163,6 +167,8 @@ final class RenderTests: XCTestCase {
             "rebasing moved the particles")
     }
 
+    /// Density sets how many particles are drawn; a setting that stopped
+    /// reaching the renderer would leave the tunnel looking the same at any value.
     func testDensityChangesWhatIsDrawn() throws {
         let sparse = try renderFrame(
             settings: VortexSettings(flowSpeed: 1, lightning: false, density: 0.25)
@@ -175,6 +181,7 @@ final class RenderTests: XCTestCase {
             stride(from: 0, to: pixels.count, by: 4).reduce(0) { $0 + Int(pixels[$1 + 1]) }
         }
         XCTAssertGreaterThan(
-            totalLight(dense), totalLight(sparse), "density did not add any particles")
+            totalLight(dense), totalLight(sparse),
+            "density 1.5 drew \(totalLight(dense)) of light, density 0.25 \(totalLight(sparse))")
     }
 }

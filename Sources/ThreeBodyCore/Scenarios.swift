@@ -585,7 +585,7 @@ public enum Scenarios {
             // one handed the last few steps cannot win on not having been
             // checked.
             let relative = outcome.survivedFor / max(horizon, 1e-12)
-            if best == nil || relative > best!.survived {
+            if best.map({ relative > $0.survived }) ?? true {
                 best = (candidate, relative)
             }
             if outcome.exhaustedBudget || stepsRemaining <= 0 { break }

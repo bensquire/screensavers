@@ -62,6 +62,7 @@ public final class GargantuaRenderer {
         case noCommandQueue
         case missingFunction(String)
         case noNoiseVolume
+        case noColorAttachment
 
         public var description: String {
             switch self {
@@ -69,6 +70,7 @@ public final class GargantuaRenderer {
             case .noCommandQueue: return "could not create a Metal command queue"
             case .missingFunction(let name): return "shader '\(name)' is missing"
             case .noNoiseVolume: return "could not build the noise volume"
+            case .noColorAttachment: return "could not configure a pipeline's colour attachment"
             }
         }
     }
@@ -95,7 +97,7 @@ public final class GargantuaRenderer {
             descriptor.label = label
             descriptor.vertexFunction = vertex
             descriptor.fragmentFunction = try function(fragment)
-            let attachment = descriptor.colorAttachments[0]!
+            guard let attachment = descriptor.colorAttachments[0] else { throw Failure.noColorAttachment }
             attachment.pixelFormat = format
             if additive {
                 attachment.isBlendingEnabled = true
@@ -180,18 +182,20 @@ public final class GargantuaRenderer {
         }
     }
 
-    private func makeTarget(_ width: Int, _ height: Int, label: String) -> MTLTexture {
+    private func makeTarget(_ width: Int, _ height: Int, label: String) -> MTLTexture? {
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: Self.hdrFormat, width: max(1, width), height: max(1, height),
             mipmapped: false)
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
-        let texture = device.makeTexture(descriptor: descriptor)!
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.label = label
         return texture
     }
 
-    private func targets(outputWidth: Int, outputHeight: Int, renderScale: Double) -> RenderTargets {
+    /// Nil when the GPU cannot allocate them, which costs that frame rather than
+    /// the screensaver host.
+    private func targets(outputWidth: Int, outputHeight: Int, renderScale: Double) -> RenderTargets? {
         // Even, so every row of the checkerboard has the same number of each half.
         let renderWidth = max(2, Int((Double(outputWidth) * renderScale).rounded())) & ~1
         let renderHeight = max(2, Int((Double(outputHeight) * renderScale).rounded()))
@@ -206,22 +210,25 @@ public final class GargantuaRenderer {
         var w = max(2, renderWidth), h = max(2, renderHeight)
         for level in 0..<Self.bloomLevels {
             guard w > 4 && h > 4 || level == 0 else { break }
-            bloom.append(makeTarget(w, h, label: "bloom \(level)"))
+            guard let texture = makeTarget(w, h, label: "bloom \(level)") else { return nil }
+            bloom.append(texture)
             w = max(2, w >> 1)
             h = max(2, h >> 1)
         }
 
         let streakWidth = max(4, renderWidth >> 2)
         let streakHeight = max(4, renderHeight >> 2)
+        guard let scene = makeTarget(renderWidth / 2, renderHeight, label: "scene"),
+            let historyA = makeTarget(renderWidth, renderHeight, label: "history A"),
+            let historyB = makeTarget(renderWidth, renderHeight, label: "history B"),
+            let streakA = makeTarget(streakWidth, streakHeight, label: "streak A"),
+            let streakB = makeTarget(streakWidth, streakHeight, label: "streak B")
+        else { return nil }
         let fresh = RenderTargets(
             outputWidth: outputWidth, outputHeight: outputHeight,
             renderWidth: renderWidth, renderHeight: renderHeight,
-            scene: makeTarget(renderWidth / 2, renderHeight, label: "scene"),
-            historyA: makeTarget(renderWidth, renderHeight, label: "history A"),
-            historyB: makeTarget(renderWidth, renderHeight, label: "history B"),
-            bloom: bloom,
-            streakA: makeTarget(streakWidth, streakHeight, label: "streak A"),
-            streakB: makeTarget(streakWidth, streakHeight, label: "streak B"))
+            scene: scene, historyA: historyA, historyB: historyB, bloom: bloom,
+            streakA: streakA, streakB: streakB)
         targets = fresh
         // The new buffers hold nothing, and the old history is the wrong size.
         historyValid = false
@@ -262,9 +269,11 @@ public final class GargantuaRenderer {
         to target: MTLTexture,
         in commandBuffer: MTLCommandBuffer
     ) {
-        let rt = targets(
-            outputWidth: target.width, outputHeight: target.height,
-            renderScale: adaptive.renderScale)
+        guard
+            let rt = targets(
+                outputWidth: target.width, outputHeight: target.height,
+                renderScale: adaptive.renderScale)
+        else { return }
         // Alternating halves, so each pixel is marched every other frame.
         let checker = Float(scene.frameIndex & 1)
 

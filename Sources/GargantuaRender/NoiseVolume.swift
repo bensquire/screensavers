@@ -113,15 +113,13 @@ public enum NoiseVolume {
 
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
         texture.label = "disk noise"
-        bytes.withUnsafeBytes { buffer in
-            texture.replace(
-                region: MTLRegionMake3D(0, 0, 0, n, n, n),
-                mipmapLevel: 0,
-                slice: 0,
-                withBytes: buffer.baseAddress!,
-                bytesPerRow: n * channels,
-                bytesPerImage: n * n * channels)
-        }
+        texture.replace(
+            region: MTLRegionMake3D(0, 0, 0, n, n, n),
+            mipmapLevel: 0,
+            slice: 0,
+            withBytes: bytes,
+            bytesPerRow: n * channels,
+            bytesPerImage: n * n * channels)
 
         guard let commandBuffer = queue.makeCommandBuffer(),
             let blit = commandBuffer.makeBlitCommandEncoder()

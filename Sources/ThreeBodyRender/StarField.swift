@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SaverCore
 import SaverKit
 import ThreeBodyCore
 
@@ -110,8 +111,8 @@ public struct StarField {
         for star in stars {
             // Wrap rather than scroll off: a star leaving one edge reappears at
             // the other, and at one or two pixels across nobody sees it happen.
-            let x = wrap(star.x + dx * star.depth, width)
-            let y = wrap(star.y + dy * star.depth, height)
+            let x = (star.x + dx * star.depth).wrapped(modulo: width)
+            let y = (star.y + dy * star.depth).wrapped(modulo: height)
             let extent = max(snap(star.size), quantum)
             let level = bucket(star.brightness, of: Self.brightnessBuckets)
             let tint = bucket(star.warmth, of: Self.warmthBuckets)
@@ -140,10 +141,5 @@ public struct StarField {
                 ctx.fill(rects[level][tint])
             }
         }
-    }
-
-    private func wrap(_ value: Double, _ modulus: Double) -> Double {
-        let r = value.truncatingRemainder(dividingBy: modulus)
-        return r < 0 ? r + modulus : r
     }
 }

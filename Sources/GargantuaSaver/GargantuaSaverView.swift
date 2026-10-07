@@ -33,7 +33,7 @@ final class GargantuaView: ScreenSaverView {
     }
 
     /// Set in `init`, once there is a `self` for it to manage.
-    private var lifecycle: SaverLifecycle!
+    private var lifecycle: SaverLifecycle?
 
     override init?(frame: NSRect, isPreview: Bool) {
         let identifier =
@@ -118,7 +118,7 @@ final class GargantuaView: ScreenSaverView {
     }
 
     override func animateOneFrame() {
-        guard !lifecycle.isSuspended else { return }
+        guard let lifecycle, !lifecycle.isSuspended else { return }
         super.animateOneFrame()
         blackHole?.advance(deltaTime: frameClock.tick())
     }

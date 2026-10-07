@@ -286,15 +286,19 @@ public final class Renderer {
     private func drawBackground(in ctx: CGContext, size: CGSize) {
         if backgroundGradient == nil {
             // Not pure black: a faint cool-to-warm shift gives the void depth.
-            let colors = [
-                CGColor(colorSpace: colorSpace, components: [0.016, 0.020, 0.035, 1])!,
-                CGColor(colorSpace: colorSpace, components: [0.008, 0.009, 0.016, 1])!,
-                CGColor(colorSpace: colorSpace, components: [0.020, 0.014, 0.020, 1])!,
+            let components: [[CGFloat]] = [
+                [0.016, 0.020, 0.035, 1],
+                [0.008, 0.009, 0.016, 1],
+                [0.020, 0.014, 0.020, 1],
             ]
-            backgroundGradient = CGGradient(
-                colorsSpace: colorSpace,
-                colors: colors as CFArray,
-                locations: [0.0, 0.55, 1.0])
+            let colors = components.compactMap { CGColor(colorSpace: colorSpace, components: $0) }
+            // Without every stop there is no gradient, and the fill below stays plain black.
+            if colors.count == components.count {
+                backgroundGradient = CGGradient(
+                    colorsSpace: colorSpace,
+                    colors: colors as CFArray,
+                    locations: [0.0, 0.55, 1.0])
+            }
         }
         ctx.setFillColor(gray: 0, alpha: 1)
         ctx.fill(CGRect(origin: .zero, size: size))
@@ -387,18 +391,20 @@ public final class Renderer {
     private func glowGradient(for index: Int) -> CGGradient? {
         if let cached = glowGradients[index] { return cached }
         let color = Renderer.color(at: index)
-        let inner = CGColor(
-            colorSpace: colorSpace,
-            components: [
-                CGFloat(color.r), CGFloat(color.g),
-                CGFloat(color.b), 0.55,
-            ])!
-        let outer = CGColor(
-            colorSpace: colorSpace,
-            components: [
-                CGFloat(color.r), CGFloat(color.g),
-                CGFloat(color.b), 0,
-            ])!
+        guard
+            let inner = CGColor(
+                colorSpace: colorSpace,
+                components: [
+                    CGFloat(color.r), CGFloat(color.g),
+                    CGFloat(color.b), 0.55,
+                ]),
+            let outer = CGColor(
+                colorSpace: colorSpace,
+                components: [
+                    CGFloat(color.r), CGFloat(color.g),
+                    CGFloat(color.b), 0,
+                ])
+        else { return nil }
         let gradient = CGGradient(
             colorsSpace: colorSpace,
             colors: [inner, outer] as CFArray,
