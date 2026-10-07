@@ -1,10 +1,11 @@
 name: Release
 
 # Builds one Developer ID signed + notarized saver, zips it, and publishes a GitHub
-# Release. Each screensaver versions independently, so a tag names which one:
+# Release. Each screensaver versions independently, so a tag names which one,
+# pushed on its own by its ref (NOTES.md: tags pushed together start no run):
 #
-#   git tag three-body-v1.0.0   && git push --tags
-#   git tag solar-system-v1.1.0 && git push --tags
+#   git tag three-body-v1.0.0   && git push origin refs/tags/three-body-v1.0.0
+#   git tag solar-system-v1.1.0 && git push origin refs/tags/solar-system-v1.1.0
 #
 # Required repository secrets:
 #   SIGNING_CERTIFICATE_P12_BASE64  Developer ID Application cert, p12, base64
@@ -31,7 +32,7 @@ permissions:
 jobs:
   release:
     name: Build, sign, publish
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 40
     # On the job rather than on the build step, so nothing can rebuild with a
     # different identity than the one that will be notarized.
@@ -44,7 +45,7 @@ jobs:
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          xcode-version: "26.6"
 
       - name: Resolve saver and version from the tag
         id: what
