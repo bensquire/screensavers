@@ -1,4 +1,5 @@
 .build/
 build/
+!.claude/skills/build/
 dist/
 .DS_Store
