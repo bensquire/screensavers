@@ -18,6 +18,9 @@ extension Double {
     /// `truncatingRemainder`, whose result keeps the sign of the dividend. For
     /// angles, and for anything else that wraps.
     public func wrapped(modulo modulus: Double) -> Double {
-        self - modulus * (self / modulus).rounded(.down)
+        let remainder = self - modulus * (self / modulus).rounded(.down)
+        // A negative value within rounding of zero lands on `modulus` itself
+        // (-1e-17 wrapped modulo 1 is 1.0), which is zero on the circle.
+        return remainder == modulus ? 0 : remainder
     }
 }
